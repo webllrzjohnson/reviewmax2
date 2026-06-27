@@ -127,14 +127,59 @@ function upscaleAmazonImageUrl(url: string): string {
 const THUMBNAIL_MARKER =
   /\._(?:SS|SX|SY|US|SR|CR|AC_US|AC_SY|AC_SX|SL\d{1,3})_\./i;
 
-function collectAmazonImageCandidates(text: string): string[] {
-  const found = new Set<string>();
+function isProductImageHost(url: string): boolean {
+  if (!AMAZON_IMAGE_HOST.test(url)) return false;
+  if (/\/images\/(?:G|S)\//i.test(url)) return false;
+  if (/grey-pixel/i.test(url)) return false;
+  if (/aax-.*amazon/i.test(url)) return false;
+  if (/\.pdf$/i.test(url)) return false;
+  return /\/images\/I\//i.test(url);
+}
+
+function upscaledFromThumbnailUrl(raw: string): string | null {
+  const match = raw.match(
+    /^(https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+\-]+)/i,
+  );
+  return match ? upscaleAmazonImageUrl(match[1]) : null;
+}
+
+/**
+ * Collects product image URLs in priority order (best first). Uses ordered
+ * dedupe — unlike a Set, first occurrence wins so promos scraped early do not
+ * beat the gallery hero.
+ */
+function collectAmazonImageCandidates(text: string, asin: string): string[] {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
 
   const push = (raw: string | undefined) => {
-    const url = raw ? normalizeAmazonImageUrl(raw) : null;
-    if (url) found.add(url);
+    if (!raw) return;
+    const url = normalizeAmazonImageUrl(raw);
+    if (!url || !isProductImageHost(url)) return;
+    if (seen.has(url)) return;
+    seen.add(url);
+    ordered.push(url);
   };
 
+  const pushThumbnailBase = (raw: string | undefined) => {
+    if (!raw) return;
+    const url = upscaledFromThumbnailUrl(raw);
+    if (!url || !isProductImageHost(url)) return;
+    if (seen.has(url)) return;
+    seen.add(url);
+    ordered.push(url);
+  };
+
+  // 1. Primary hero from the product image widget.
+  const landingPatterns = [
+    /id=["']landingImage["'][^>]*(?:data-old-hires|src)=["']([^"']+)["']/i,
+    /(?:data-old-hires|src)=["']([^"']+)["'][^>]*id=["']landingImage["']/i,
+  ];
+  for (const pattern of landingPatterns) {
+    push(text.match(pattern)?.[1]);
+  }
+
+  // 2. Open Graph (when present).
   const ogPatterns = [
     /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
@@ -143,19 +188,39 @@ function collectAmazonImageCandidates(text: string): string[] {
     push(text.match(pattern)?.[1]);
   }
 
-  for (const match of text.matchAll(/"hiRes"\s*:\s*"(https:\/\/[^"]+)"/g)) {
-    push(match[1]);
-  }
-  for (const match of text.matchAll(/"large"\s*:\s*"(https:\/\/[^"]+)"/g)) {
-    push(match[1]);
-  }
+  // 3. First hiRes in colorImages.initial (main gallery slot).
+  const colorInitial = text.match(
+    /"colorImages"\s*:\s*\{[\s\S]*?"initial"\s*:\s*\[[\s\S]*?"hiRes"\s*:\s*"(https:\/\/[^"]+)"/i,
+  );
+  push(colorInitial?.[1]);
+
+  // 4. First hiRes / large in the page JSON (usually the hero).
+  push(text.match(/"hiRes"\s*:\s*"(https:\/\/[^"]+)"/)?.[1]);
+  push(text.match(/"large"\s*:\s*"(https:\/\/[^"]+)"/)?.[1]);
+
   for (const match of text.matchAll(
     /data-old-hires=["'](https:\/\/m\.media-amazon\.com\/images\/I\/[^"']+)["']/gi,
   )) {
     push(match[1]);
   }
 
-  for (const match of text.matchAll(
+  // 5. Product section only — skip nav promos like "Summer Edit" above the listing.
+  const asinMarker = `/dp/${asin}`;
+  const asinIdx = text.indexOf(asinMarker);
+  const productSection =
+    asinIdx >= 0 ? text.slice(asinIdx, asinIdx + 80_000) : text;
+
+  const galleryThumb = productSection.match(
+    /https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+\-]+\._AC_US40_\.jpg/i,
+  );
+  pushThumbnailBase(galleryThumb?.[0]);
+
+  const ssThumb = productSection.match(
+    /https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+\-]+\._SS75_\.jpg/i,
+  );
+  pushThumbnailBase(ssThumb?.[0]);
+
+  for (const match of productSection.matchAll(
     /https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+._%-]+\.(?:jpg|jpeg|png|webp)/gi,
   )) {
     const raw = match[0];
@@ -163,7 +228,7 @@ function collectAmazonImageCandidates(text: string): string[] {
     push(raw);
   }
 
-  return [...found];
+  return ordered;
 }
 
 /** GET the first bytes of a URL and confirm it is a real product photo (not a 1×1 GIF). */
@@ -195,17 +260,13 @@ async function measureImageBytes(url: string): Promise<number | null> {
 }
 
 async function pickBestVerifiedImage(urls: string[]): Promise<string | null> {
-  let best: { url: string; bytes: number } | null = null;
-
+  // Prefer the first high-confidence candidate that loads, not the largest file
+  // on the page (promo banners and ads are often bigger than the hero thumb).
   for (const url of urls) {
     const bytes = await measureImageBytes(url);
-    if (bytes === null) continue;
-    if (!best || bytes > best.bytes) {
-      best = { url, bytes };
-    }
+    if (bytes !== null) return url;
   }
-
-  return best?.url ?? null;
+  return null;
 }
 
 async function fetchAmazonPage(productUrl: string): Promise<string | null> {
@@ -281,18 +342,38 @@ export async function resolveAmazonProductImageUrl(
 
   const html = await fetchAmazonPage(productUrl);
   if (html) {
-    candidates.push(...collectAmazonImageCandidates(html));
+    candidates.push(...collectAmazonImageCandidates(html, asin));
   }
 
   if (candidates.length === 0) {
     const jina = await fetchAmazonPageViaJina(productUrl);
     if (jina) {
-      const fromJina = collectAmazonImageCandidates(jina);
-      candidates.push(...fromJina);
+      candidates.push(...collectAmazonImageCandidates(jina, asin));
     }
   }
 
   if (candidates.length === 0) return null;
 
   return pickBestVerifiedImage(candidates);
+}
+
+/** Bare /images/I/{id}.jpg URLs (no size suffix) are often nav promos, not the hero. */
+export function looksLikeBarePromoImage(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /\/images\/I\/[A-Za-z0-9+\-]+\.jpg$/i.test(url.split("?")[0]);
+}
+
+/** Retries image resolution — Amazon often blocks or times out on the first attempt. */
+export async function resolveAmazonProductImageUrlWithRetry(
+  amazonUrl: string,
+  attempts = 3,
+): Promise<string | null> {
+  for (let i = 0; i < attempts; i += 1) {
+    const url = await resolveAmazonProductImageUrl(amazonUrl);
+    if (url) return url;
+    if (i < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
+    }
+  }
+  return null;
 }

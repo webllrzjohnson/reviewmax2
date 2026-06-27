@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { categories, posts } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
 import { getDbErrorCode } from "@/lib/db-errors";
-import { expandAmazonProductUrl, resolveAmazonProductImageUrl } from "@/lib/amazon-image";
+import { expandAmazonProductUrl, resolveAmazonProductImageUrlWithRetry } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
 import { maybePostReviewToPinterest } from "@/lib/pinterest";
 import { checkPublishQuality } from "@/lib/post-quality";
@@ -70,7 +70,7 @@ async function preparePostValues(input: PostEditorInput) {
   const amazonUrl = await expandAmazonProductUrl(input.amazon_url);
   let imageUrl = coerceProductImageUrl(input.image_url);
   if (!imageUrl) {
-    imageUrl = await resolveAmazonProductImageUrl(amazonUrl);
+    imageUrl = await resolveAmazonProductImageUrlWithRetry(amazonUrl);
   }
 
   const pros = parseLines(input.pros);
@@ -252,7 +252,7 @@ export async function retryPostImage(id: string): Promise<PostActionState> {
 
     if (!post) return { ok: false, message: "Post not found." };
 
-    const imageUrl = await resolveAmazonProductImageUrl(post.amazonUrl);
+    const imageUrl = await resolveAmazonProductImageUrlWithRetry(post.amazonUrl);
     if (!imageUrl) {
       return {
         ok: false,

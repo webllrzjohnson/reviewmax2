@@ -76,9 +76,9 @@ export async function discoverProducts(
         /^(https:\/\/.+\/images\/[A-Z]\/[A-Za-z0-9+\-]+)/i,
       );
       image = match ? `${match[1]}._SL1500_.jpg` : null;
-    } else if (item.asin) {
-      image = `https://images-na.ssl-images-amazon.com/images/P/${item.asin}.jpg`;
     }
+    // Do not fall back to /images/P/{asin}.jpg — Amazon returns a 1×1 tracking
+    // pixel for those paths and coerceProductImageUrl rejects them anyway.
 
     return {
       rank: i + 1,

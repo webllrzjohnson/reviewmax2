@@ -13,6 +13,7 @@ import {
 import { db } from "@/lib/db";
 import { mapCategory, mapPostWithCategory } from "@/lib/db/mappers";
 import { categories, posts } from "@/lib/db/schema";
+import { resolveAmazonProductImageUrlWithRetry, looksLikeBarePromoImage } from "@/lib/amazon-image";
 import {
   validateComparisonPair,
   type ComparePostsResult,
@@ -120,7 +121,33 @@ export const getPostBySlug = cache(
         .limit(1);
 
       if (!row) return null;
-      return mapPostWithCategory({ ...row.post, category: row.category });
+
+      const mapped = mapPostWithCategory({ ...row.post, category: row.category });
+
+      const needsImage =
+        !mapped.image_url ||
+        looksLikeBarePromoImage(mapped.image_url);
+
+      if (needsImage && mapped.amazon_url) {
+        const resolved = await resolveAmazonProductImageUrlWithRetry(
+          mapped.amazon_url,
+        );
+        if (resolved && resolved !== mapped.image_url) {
+          void db
+            .update(posts)
+            .set({
+              imageUrl: resolved,
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(posts.id, mapped.id))
+            .catch((err) =>
+              console.warn("getPostBySlug: image backfill failed", err),
+            );
+          return { ...mapped, image_url: resolved };
+        }
+      }
+
+      return mapped;
     } catch {
       return null;
     }

@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 import {
   expandAmazonProductUrl,
-  resolveAmazonProductImageUrl,
+  resolveAmazonProductImageUrlWithRetry,
 } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
 import { parseJsonLoose } from "@/lib/parse-json";
@@ -149,7 +149,8 @@ ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
     const review = result.data;
     const passthroughImage = coerceProductImageUrl(params.image_url);
     const imageUrl =
-      passthroughImage ?? (await resolveAmazonProductImageUrl(amazonUrl));
+      passthroughImage ??
+      (await resolveAmazonProductImageUrlWithRetry(amazonUrl));
 
     const faqs = review.faqs
       .map((f) => ({ q: f.q.trim(), a: f.a.trim() }))
