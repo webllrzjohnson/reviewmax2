@@ -148,7 +148,7 @@ export function ReviewRequestsTable({
                             const res = await processReviewRequestAction(r.id);
                             if (res.ok) {
                               toast.success(
-                                res.message ?? "Sent to n8n for generation.",
+                                res.message ?? "Review draft generated.",
                               );
                               router.refresh();
                             } else {

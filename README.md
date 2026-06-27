@@ -1,6 +1,6 @@
 ﻿# Verdict
 
-AI-assisted Amazon affiliate review site built with Next.js, PostgreSQL, Auth.js, and n8n.
+AI-assisted Amazon affiliate review site built with Next.js, PostgreSQL, and Auth.js. Review drafts are generated in-app with OpenAI.
 
 ## Quick start (local)
 
@@ -23,7 +23,9 @@ AI-assisted Amazon affiliate review site built with Next.js, PostgreSQL, Auth.js
 
 See **DEPLOYMENT.md** for Coolify/VPS production deployment.
 
-**n8n automation:** import the workflow — see **`n8n/SETUP.md`**
+## Generating reviews
+
+Set `OPENAI_API_KEY` in `.env.local`, then go to `/dashboard/new-review`. Submitting a product generates a draft review with AI, fetches the product image from Amazon, and saves it unpublished for you to review and publish. Public suggestions from `/suggest` land in `/dashboard/review-requests`, where **Process** generates a draft the same way.
 
 ## Scripts
 
@@ -43,4 +45,4 @@ See **DEPLOYMENT.md** for Coolify/VPS production deployment.
 - **Frontend:** Next.js 15 App Router, Tailwind, shadcn/ui
 - **Database:** PostgreSQL + Drizzle ORM
 - **Auth:** Auth.js (admin credentials)
-- **Automation:** n8n webhook -> `/api/webhook/n8n`
+- **AI:** OpenAI (in-app review generation + editor assist)

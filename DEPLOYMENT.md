@@ -1,6 +1,6 @@
 # Deploying ReviewMax (VPS + Coolify + PostgreSQL)
 
-This guide assumes a VPS with [Coolify](https://coolify.io), a PostgreSQL database, and (optionally) a self-hosted n8n instance.
+This guide assumes a VPS with [Coolify](https://coolify.io) and a PostgreSQL database.
 
 ## 1. PostgreSQL
 
@@ -38,10 +38,10 @@ Add every variable from `.env.example` to Coolify:
 | `AUTH_URL` | Public site URL, e.g. `https://reviews.yourdomain.com` |
 | `ADMIN_EMAIL` | Seeded admin login email |
 | `ADMIN_INITIAL_PASSWORD` | One-time seed password; rotate after first login |
-| `WEBHOOK_SECRET` | Shared with n8n |
+| `OPENAI_API_KEY` | Required for in-app review generation and editor assist |
 | `NEXT_PUBLIC_SITE_URL` | Same as public URL |
 
-Server-only (never expose to browser): `DATABASE_URL`, `AUTH_SECRET`, `WEBHOOK_SECRET`, `SENTRY_DSN`.
+Server-only (never expose to browser): `DATABASE_URL`, `AUTH_SECRET`, `OPENAI_API_KEY`, `SENTRY_DSN`.
 
 ## 3. Deploy to Coolify
 
@@ -71,31 +71,22 @@ npm run db:seed
 
 Re-run `npm run db:migrate` after pulling updates that add SQL files under `drizzle/` (e.g. `0001_post_gallery.sql`). Uses `DATABASE_URL` from Coolify env (no `.env.local` in production).
 
-## 4. n8n automation
+## 4. Review generation
 
-Full step-by-step guide: **docs/N8N.md**
+Reviews are generated in-app — no external automation service is required.
 
-Summary:
+1. Set `OPENAI_API_KEY` in the app environment.
+2. Sign in and go to `/dashboard/new-review`.
+3. Submitting a product calls OpenAI to draft the review, fetches the product image from Amazon, and saves an **unpublished** post.
+4. Review and publish the draft from `/dashboard/posts`.
 
-1. Create an n8n workflow with Webhook path `review-request`.
-2. Set `N8N_REVIEW_WEBHOOK_URL` in ReviewMax to the n8n production webhook URL.
-3. Workflow: Webhook → Claude (Anthropic) → `POST /api/webhook/n8n` on ReviewMax.
-4. Use the same `WEBHOOK_SECRET` in ReviewMax and both n8n HTTP headers.
-5. n8n must call a **public** ReviewMax URL (not `localhost` from your PC).
-
-Code snippets for n8n Code nodes: `n8n/code/`
-
-Test publish webhook locally:
-
-```powershell
-npm run test:webhook
-```
+Public suggestions from `/suggest` appear in `/dashboard/review-requests`; **Process** generates a draft the same way.
 
 ## 5. Post-deploy checklist
 
 - [ ] Open `/` and `/blog`; confirm posts load from PostgreSQL.
 - [ ] Sign in at `/login` as admin; open `/dashboard` and submit a test review request.
-- [ ] Call `POST /api/webhook/n8n` with a valid payload and `X-Webhook-Secret`; confirm a new row in `posts` and `/blog/<slug>` works.
+- [ ] Confirm the generated draft appears in `/dashboard/posts`, then publish it and verify `/blog/<slug>` works.
 - [ ] Confirm Amazon links include `tag=` when `NEXT_PUBLIC_AMAZON_TRACKING_ID` is set.
 - [ ] Fetch `https://YOUR_DOMAIN/sitemap.xml` and `https://YOUR_DOMAIN/robots.txt`.
 

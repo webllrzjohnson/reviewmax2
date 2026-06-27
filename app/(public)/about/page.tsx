@@ -44,8 +44,8 @@ export default function AboutPage() {
           specific product category or model, organizes findings into strengths
           and tradeoffs, assigns a concise star rating, and ends with a clear
           verdict so you can decide quickly whether something fits your needs.
-          The site integrates with tooling (including Claude and n8n) on the
-          backend to streamline drafting and formatting; published pages are plain
+          The site uses AI tooling on the backend to streamline drafting and
+          formatting; published pages are plain
           web content you read in your browser—no signup required to browse
           reviews.
         </p>

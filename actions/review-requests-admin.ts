@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { reviewRequests } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
 import { expandAmazonProductUrl } from "@/lib/amazon-image";
-import { triggerReviewRequestN8n } from "@/lib/review-request-n8n";
+import { generateAndInsertReview } from "@/actions/generate-review";
 
 export type RequestActionState = { ok: boolean; message?: string };
 
@@ -48,22 +48,22 @@ export async function processReviewRequestAction(
     const notes =
       row.notes != null && row.notes.trim() !== "" ? row.notes.trim() : null;
 
-    const n8n = await triggerReviewRequestN8n({
+    const generated = await generateAndInsertReview({
       product_name: row.productName,
       category_slug: row.categorySlug,
       amazon_url: amazonUrl,
       notes,
     });
 
-    if (!n8n.ok) {
+    if (!generated.ok) {
       await db
         .update(reviewRequests)
-        .set({ processError: n8n.message ?? "Webhook failed." })
+        .set({ processError: generated.message ?? "Generation failed." })
         .where(eq(reviewRequests.id, id));
 
       revalidatePath("/dashboard/review-requests");
       revalidatePath("/dashboard");
-      return { ok: false, message: n8n.message };
+      return { ok: false, message: generated.message };
     }
 
     await db
@@ -80,7 +80,7 @@ export async function processReviewRequestAction(
     revalidatePath("/dashboard");
     return {
       ok: true,
-      message: "Sent to n8n for review generation.",
+      message: "Review draft generated.",
     };
   } catch (e) {
     console.error(e);

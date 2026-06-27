@@ -124,7 +124,7 @@ export function PostEditorForm({
       <CardHeader>
         <CardTitle>{isEdit ? "Edit post" : "Create post manually"}</CardTitle>
         <CardDescription>
-          Write or update a review without n8n. Hero image can be left blank to
+          Write or update a review by hand. Hero image can be left blank to
           auto-fetch from the product URL. Add extra image URLs one per line.
         </CardDescription>
       </CardHeader>

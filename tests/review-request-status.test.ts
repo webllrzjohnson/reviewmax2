@@ -31,7 +31,7 @@ describe("getReviewRequestStatus", () => {
 
   it("returns failed when process_error is set and not processed", () => {
     assert.equal(
-      getReviewRequestStatus(baseRequest({ process_error: "n8n returned 500" })),
+      getReviewRequestStatus(baseRequest({ process_error: "Generation failed." })),
       "failed",
     );
   });

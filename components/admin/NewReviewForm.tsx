@@ -103,9 +103,9 @@ export function NewReviewForm({ categories }: { categories: Category[] }) {
       <CardHeader>
         <CardTitle>Review request</CardTitle>
         <CardDescription>
-          Saves to <code>review_requests</code> and POSTs JSON to your n8n
-          webhook when <code>N8N_REVIEW_WEBHOOK_URL</code> is set (with{" "}
-          <code>X-Webhook-Secret</code> if <code>WEBHOOK_SECRET</code> is set).
+          Saves to <code>review_requests</code> and generates a draft review
+          with AI (requires <code>OPENAI_API_KEY</code>). The draft is saved
+          unpublished for you to review and publish.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -190,7 +190,7 @@ export function NewReviewForm({ categories }: { categories: Category[] }) {
             disabled={isSubmitting}
             className={cn("w-full sm:w-auto")}
           >
-            {isSubmitting ? "Submitting…" : "Save & notify n8n"}
+            {isSubmitting ? "Generating…" : "Generate review"}
           </Button>
         </form>
       </CardContent>

@@ -16,7 +16,7 @@ export default async function NewPostPage() {
             New post
           </h1>
           <p className="mt-1 text-muted-foreground">
-            Create a review manually without the n8n workflow.
+            Create a review manually, or generate one from New review.
           </p>
         </div>
         <Button asChild variant="outline">

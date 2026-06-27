@@ -42,7 +42,14 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
         <Link href="/dashboard/posts/new" className="text-primary underline">
           Create one manually
         </Link>{" "}
-        or use the n8n workflow.
+        or generate one from{" "}
+        <Link
+          href="/dashboard/new-review"
+          className="text-primary underline"
+        >
+          New review
+        </Link>
+        .
       </div>
     );
   }

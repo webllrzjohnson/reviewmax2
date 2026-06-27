@@ -21,7 +21,7 @@ export default async function ReviewRequestsPage() {
             {pendingCount} pending, {requests.length} total — {publicCount}{" "}
             from public suggestions, {requests.length - publicCount} from admin.
             Use <span className="font-medium text-foreground">Process</span> to
-            send a request to n8n without re-entering it.
+            generate a draft review without re-entering it.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

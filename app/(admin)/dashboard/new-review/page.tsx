@@ -21,9 +21,8 @@ export default async function NewReviewPage() {
       <div>
         <h1 className="text-2xl font-bold">New review request</h1>
         <p className="text-muted-foreground">
-          n8n should call Claude, store images, then POST the finished payload
-          to <code className="text-xs">/api/webhook/n8n</code> with the shared
-          secret header.
+          Submitting generates a draft review with AI, fetches the product
+          image from Amazon, and saves it unpublished for your review.
         </p>
       </div>
       <NewReviewForm categories={categories} />

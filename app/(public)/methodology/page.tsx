@@ -95,8 +95,8 @@ export default function MethodologyPage() {
 
         <h2>How AI tooling fits in</h2>
         <p>
-          Verdict uses an AI-assisted drafting pipeline (Claude via n8n) to
-          organize research into structured draft reviews. The AI handles
+          Verdict uses an AI-assisted drafting pipeline to organize research
+          into structured draft reviews. The AI handles
           formatting — summarizing pros and cons, drafting a verdict sentence,
           suggesting a star rating — based on the source data fed to it.
         </p>

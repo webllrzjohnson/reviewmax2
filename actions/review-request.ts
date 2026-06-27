@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { reviewRequests } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
 import { expandAmazonProductUrl } from "@/lib/amazon-image";
-import { triggerReviewRequestN8n } from "@/lib/review-request-n8n";
+import { generateAndInsertReview } from "@/actions/generate-review";
 import {
   ReviewRequestSchema,
   type ReviewRequestInput,
@@ -15,13 +15,13 @@ import {
 export type ReviewRequestState = {
   ok: boolean;
   message?: string;
+  slug?: string;
 };
 
 /**
- * Validates with ReviewRequestSchema, inserts into `review_requests`,
- * then POSTs to n8n with JSON body
- * `{ product_name, category, amazon_url, notes }` and header
- * `X-Webhook-Secret: process.env.WEBHOOK_SECRET` (empty string if unset).
+ * Validates with ReviewRequestSchema, inserts into `review_requests`, then
+ * generates a review draft in-app (OpenAI) and saves it as an unpublished post.
+ * The request row is marked processed on success or stamped with the error.
  */
 export async function submitReviewRequestAction(
   input: ReviewRequestInput,
@@ -57,23 +57,14 @@ export async function submitReviewRequestAction(
       return { ok: false, message: "Something went wrong." };
     }
 
-    const n8n = await triggerReviewRequestN8n({
+    const generated = await generateAndInsertReview({
       product_name: parsed.data.product_name,
       category_slug: parsed.data.category,
       amazon_url: amazonUrl,
       notes,
     });
 
-    if (n8n.skipped) {
-      revalidatePath("/dashboard");
-      revalidatePath("/dashboard/review-requests");
-      return {
-        ok: true,
-        message: n8n.message ?? "Request saved.",
-      };
-    }
-
-    if (n8n.ok) {
+    if (generated.ok) {
       await db
         .update(reviewRequests)
         .set({
@@ -87,21 +78,23 @@ export async function submitReviewRequestAction(
       revalidatePath("/dashboard/review-requests");
       return {
         ok: true,
-        message: "Request saved and sent to n8n for generation.",
+        slug: generated.slug,
+        message: generated.message ?? "Review draft generated.",
       };
     }
 
     await db
       .update(reviewRequests)
-      .set({ processError: n8n.message ?? "Webhook failed." })
+      .set({ processError: generated.message ?? "Generation failed." })
       .where(eq(reviewRequests.id, inserted.id));
 
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/review-requests");
     return {
       ok: true,
-      message:
-        "Request saved, but n8n did not accept the webhook. Use Process on the queue to retry.",
+      message: `Request saved, but generation failed: ${
+        generated.message ?? "unknown error"
+      } Use Process on the queue to retry.`,
     };
   } catch (e) {
     console.error(e);
