@@ -16,6 +16,13 @@ export const GeneratedReviewSchema = z.object({
   pros: z.array(z.string().min(1)).min(1),
   cons: z.array(z.string().min(1)).min(1),
   verdict: z.string().min(1).max(2000),
+  // FAQs and specs are optional in the contract so a model that omits or
+  // malforms them never fails the whole generation; we sanitize them below.
+  faqs: z
+    .array(z.object({ q: z.string(), a: z.string() }))
+    .default([])
+    .catch([]),
+  specs: z.record(z.string(), z.string()).default({}).catch({}),
 });
 
 export type GeneratedReview = z.infer<typeof GeneratedReviewSchema>;
@@ -31,6 +38,8 @@ export type GeneratedReviewDraft = {
   pros: string[];
   cons: string[];
   verdict: string;
+  faqs: Array<{ q: string; a: string }>;
+  specs: Record<string, string>;
   amazonUrl: string;
   imageUrl: string | null;
 };
@@ -75,13 +84,18 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
 {
   "title": "string",
   "excerpt": "1-2 sentences",
-  "body": "markdown article, 400-800 words",
+  "body": "markdown article, 500-900 words. Include a '## Who it's for' section and a '## Who should skip it' section, a paragraph comparing it to typical alternatives in its category, and 1-2 inline markdown links to the product using the exact Amazon URL from the user message (descriptive anchor text such as the product name or 'check the current price', never 'click here').",
   "rating": 0-5 number with one decimal,
   "pros": ["string", ...],
   "cons": ["string", ...],
-  "verdict": "2-4 sentence summary"
+  "verdict": "2-4 sentence summary",
+  "faqs": [{ "q": "common buyer question", "a": "concise answer" }, ...],
+  "specs": { "Spec name": "value", ... }
 }
-Do not invent fake test results; write a plausible editorial tone.
+Provide 3-5 FAQs that match the questions real shoppers search for (People Also Ask style).
+Provide 4-8 key specs (e.g. material, dimensions, weight, power, warranty) as a flat object of string values; omit any you cannot reasonably infer rather than guessing wildly.
+For product links, use ONLY the exact Amazon URL given in the user message - do not invent, shorten, or modify URLs, and do not append a tracking tag (the site adds the affiliate tag automatically).
+Do not invent fake test results; write a plausible editorial tone grounded in the product's listed features.
 Product images are fetched from Amazon when the review is published - do not include an image URL.`;
 
   const user = `Product: ${params.product_name}
@@ -137,6 +151,18 @@ ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
     const imageUrl =
       passthroughImage ?? (await resolveAmazonProductImageUrl(amazonUrl));
 
+    const faqs = review.faqs
+      .map((f) => ({ q: f.q.trim(), a: f.a.trim() }))
+      .filter((f) => f.q && f.a)
+      .slice(0, 6);
+
+    const specs: Record<string, string> = {};
+    for (const [key, value] of Object.entries(review.specs)) {
+      const k = key.trim();
+      const v = String(value ?? "").trim();
+      if (k && v && Object.keys(specs).length < 12) specs[k] = v;
+    }
+
     return {
       ok: true,
       model: provider,
@@ -150,6 +176,8 @@ ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
         pros: review.pros,
         cons: review.cons,
         verdict: review.verdict.slice(0, 2000),
+        faqs,
+        specs,
         amazonUrl,
         imageUrl,
       },

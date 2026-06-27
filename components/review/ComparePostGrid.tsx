@@ -7,6 +7,7 @@ import type { PostWithCategory } from "@/types";
 import { ReviewCard } from "@/components/review/ReviewCard";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { canonicalPair } from "@/lib/compare-pairs";
 
 const MAX_COMPARE = 2;
 
@@ -35,7 +36,7 @@ export function ComparePostGrid({
 
   const compareHref =
     selected.length === MAX_COMPARE
-      ? `/compare?left=${encodeURIComponent(selected[0]!)}&right=${encodeURIComponent(selected[1]!)}`
+      ? `/compare/${canonicalPair(selected[0]!, selected[1]!)}`
       : null;
 
   if (posts.length === 0) {

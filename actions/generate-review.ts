@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { categories, posts } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
+import { getDbErrorCode } from "@/lib/db-errors";
 import { generateReviewDraft } from "@/lib/generate-review";
 
 export type GenerateReviewActionResult = {
@@ -76,6 +77,8 @@ export async function generateAndInsertReview(params: {
         amazonUrl: draft.amazonUrl,
         imageUrl: draft.imageUrl,
         galleryUrls: [],
+        faqs: draft.faqs,
+        specs: draft.specs,
         isPublished: false,
         publishedAt: null,
       })
@@ -94,13 +97,7 @@ export async function generateAndInsertReview(params: {
       message: `Draft generated with ${generated.model === "claude" ? "Claude" : "OpenAI"}. Review and publish from the dashboard.`,
     };
   } catch (error) {
-    const code =
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      typeof error.code === "string"
-        ? error.code
-        : undefined;
+    const code = getDbErrorCode(error);
 
     if (code === "23505") {
       return {

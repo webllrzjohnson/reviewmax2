@@ -3,6 +3,8 @@ import { and, count, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { categories, posts } from "@/lib/db/schema";
 import { siteUrl } from "@/lib/utils";
+import { AUTHORS } from "@/lib/authors";
+import { buildComparePairs } from "@/lib/compare-pairs";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
@@ -21,6 +23,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
     { url: `${base}/privacy-policy`, changeFrequency: "yearly", priority: 0.3 },
     { url: `${base}/terms`, changeFrequency: "yearly", priority: 0.3 },
+    ...AUTHORS.map((author) => ({
+      url: `${base}/author/${author.slug}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.4,
+    })),
   ];
 
   if (!process.env.DATABASE_URL) {
@@ -32,6 +39,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       db
         .select({
           slug: posts.slug,
+          categoryId: posts.categoryId,
           publishedAt: posts.publishedAt,
           updatedAt: posts.updatedAt,
         })
@@ -79,7 +87,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.82,
       }));
 
-    return [...staticRoutes, ...categoryRoutes, ...roundupRoutes, ...postRoutes];
+    const compareRoutes = buildComparePairs(
+      publishedPosts.map((post) => ({
+        slug: post.slug,
+        category_id: post.categoryId,
+      })),
+    ).map((pair) => ({
+      url: `${base}/compare/${pair}`,
+      changeFrequency: "weekly" as const,
+      priority: 0.6,
+    }));
+
+    return [
+      ...staticRoutes,
+      ...categoryRoutes,
+      ...roundupRoutes,
+      ...postRoutes,
+      ...compareRoutes,
+    ];
   } catch (error) {
     console.warn("sitemap database read failed", error);
     return staticRoutes;

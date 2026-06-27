@@ -192,6 +192,11 @@ export function PostEditorForm({
 
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="body">Body (Markdown)</Label>
+              <p className="text-xs text-muted-foreground">
+                Amazon links in the body are auto-tagged with your affiliate ID
+                on publish — paste plain product URLs, no need to add{" "}
+                <code>?tag=</code> yourself.
+              </p>
               <MarkdownEditorField
                 id="body"
                 value={watch("body") ?? ""}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { GitCompare } from "lucide-react";
 import type { PostWithCategory } from "@/types";
+import { canonicalPair } from "@/lib/compare-pairs";
 
 export function CompareWithLinks({
   post,
@@ -30,7 +31,7 @@ export function CompareWithLinks({
         {related.map((other) => (
           <li key={other.id}>
             <Link
-              href={`/compare?left=${encodeURIComponent(post.slug)}&right=${encodeURIComponent(other.slug)}`}
+              href={`/compare/${canonicalPair(post.slug, other.slug)}`}
               className="inline-flex max-w-full items-center rounded-full border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:border-primary/40 hover:bg-primary/5"
             >
               <span className="line-clamp-1">{other.title}</span>

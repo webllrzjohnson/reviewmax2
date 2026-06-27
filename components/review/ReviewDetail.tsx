@@ -10,6 +10,8 @@ import { CompareWithLinks } from "@/components/review/CompareWithLinks";
 import { PostBody } from "@/components/review/PostBody";
 import { formatDate, siteUrl, wasUpdatedAfterPublish, cn } from "@/lib/utils";
 import { categoryAccentForSlug } from "@/lib/category-colors";
+import { getAuthorForPost } from "@/lib/authors";
+import { deriveBrand, parsePrice } from "@/lib/product-meta";
 import { getRelatedPosts } from "@/lib/data";
 import { BreadcrumbNav } from "@/components/common/BreadcrumbNav";
 import { ShareBar } from "@/components/common/ShareBar";
@@ -19,6 +21,8 @@ import { PostBadgeTag } from "@/components/review/PostBadge";
 import { HelpfulFeedback } from "@/components/review/HelpfulFeedback";
 import { FaqAccordion } from "@/components/review/FaqAccordion";
 import { GalleryLightbox } from "@/components/review/GalleryLightbox";
+import { SpecList } from "@/components/review/SpecList";
+import { EvaluationNote } from "@/components/review/EvaluationNote";
 
 export async function ReviewDetail({
   post,
@@ -29,6 +33,7 @@ export async function ReviewDetail({
   const showUpdated = wasUpdatedAfterPublish(post.published_at, post.updated_at);
   const headings = extractHeadings(post.body);
   const accent = categoryAccentForSlug(post.category?.slug ?? "");
+  const author = getAuthorForPost(post);
 
   return (
     <article className={cn("space-y-8", post.amazon_url ? "pb-24 sm:pb-28" : undefined)}>
@@ -74,6 +79,17 @@ export async function ReviewDetail({
             <PostBadgeTag badge={post.badge} size="md" />
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            <span>
+              By{" "}
+              <a
+                href={`/author/${author.slug}`}
+                className="font-medium text-foreground underline-offset-2 hover:underline"
+                rel="author"
+              >
+                {author.name}
+              </a>
+              <span className="text-muted-foreground">, {author.role}</span>
+            </span>
             {post.published_at ? (
               <time dateTime={post.published_at}>
                 Published {formatDate(post.published_at)}
@@ -146,6 +162,8 @@ export async function ReviewDetail({
 
       <PostBody body={post.body} />
 
+      <SpecList specs={post.specs} />
+
       <FaqAccordion faqs={post.faqs} />
 
       <GalleryLightbox images={post.gallery_urls ?? []} title={post.title} />
@@ -172,6 +190,8 @@ export async function ReviewDetail({
           />
         </div>
       </section>
+
+      <EvaluationNote categoryName={post.category?.name} />
 
       <HelpfulFeedback postSlug={post.slug} />
 
@@ -218,34 +238,77 @@ function JsonLd({ post }: { post: PostWithCategory }) {
   const fallbackImage =
     "https://placehold.co/1200x630/e2e8f0/64748b?text=Product";
 
+  // Content is AI-generated and editor-reviewed, so we attribute reviews to the
+  // Verdict organization rather than asserting a named Person to search engines.
+  const authorLd = { "@type": "Organization", name: "Verdict" };
+  const publisherLd = { "@type": "Organization", name: "Verdict" };
+
+  const brand = deriveBrand(post.title);
+  const parsedPrice = parsePrice(post.price_at_review);
+
+  const offers = post.amazon_url
+    ? {
+        "@type": "Offer",
+        url: post.amazon_url,
+        availability: "https://schema.org/InStock",
+        ...(parsedPrice
+          ? {
+              price: parsedPrice.price,
+              priceCurrency: parsedPrice.priceCurrency,
+            }
+          : {}),
+      }
+    : undefined;
+
+  const reviewNode = {
+    "@type": "Review",
+    reviewRating: {
+      "@type": "Rating",
+      ratingValue: post.rating ?? undefined,
+      bestRating: 5,
+      worstRating: 0,
+    },
+    author: authorLd,
+    publisher: publisherLd,
+    datePublished: post.published_at ?? undefined,
+    reviewBody: post.verdict,
+  };
+
+  const specEntries = Object.entries(post.specs ?? {}).filter(
+    ([key, value]) => key.trim() && String(value).trim(),
+  );
+
+  // Single Product node with the review + aggregateRating nested inside it, the
+  // structure Google prefers for product review rich results.
   const productLd = {
     "@context": "https://schema.org",
     "@type": "Product",
     name: post.title,
     image: post.image_url ? [post.image_url] : [fallbackImage],
     description: post.excerpt,
-    ...(post.amazon_url
+    ...(brand ? { brand: { "@type": "Brand", name: brand } } : {}),
+    ...(specEntries.length > 0
       ? {
-          offers: {
-            "@type": "Offer",
-            url: post.amazon_url,
-            availability: "https://schema.org/InStock",
+          additionalProperty: specEntries.map(([name, value]) => ({
+            "@type": "PropertyValue",
+            name,
+            value,
+          })),
+        }
+      : {}),
+    ...(offers ? { offers } : {}),
+    review: reviewNode,
+    ...(post.rating != null
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: post.rating,
+            bestRating: 5,
+            worstRating: 0,
+            reviewCount: 1,
           },
         }
       : {}),
-  };
-
-  const reviewLd = {
-    "@context": "https://schema.org",
-    "@type": "Review",
-    itemReviewed: { "@type": "Product", name: post.title },
-    reviewRating: {
-      "@type": "Rating",
-      ratingValue: post.rating ?? undefined,
-      bestRating: 5,
-    },
-    author: { "@type": "Organization", name: "Verdict" },
-    reviewBody: post.verdict,
   };
 
   const articleLd = {
@@ -256,7 +319,8 @@ function JsonLd({ post }: { post: PostWithCategory }) {
     datePublished: post.published_at ?? undefined,
     dateModified: post.updated_at ?? post.published_at ?? undefined,
     image: post.image_url ? [post.image_url] : [fallbackImage],
-    author: { "@type": "Organization", name: "Verdict" },
+    author: authorLd,
+    publisher: publisherLd,
     mainEntityOfPage: url,
   };
 
@@ -278,10 +342,6 @@ function JsonLd({ post }: { post: PostWithCategory }) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productLd) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(reviewLd) }}
       />
       <script
         type="application/ld+json"

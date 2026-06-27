@@ -1,16 +1,26 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { categories, posts } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
+import { getDbErrorCode } from "@/lib/db-errors";
 import { expandAmazonProductUrl, resolveAmazonProductImageUrl } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
 import { maybePostReviewToPinterest } from "@/lib/pinterest";
+import { checkPublishQuality } from "@/lib/post-quality";
 import { PostEditorSchema, type PostEditorInput } from "@/lib/validations";
 
 export type PostActionState = { ok: boolean; message?: string; id?: string };
+
+/** Maps a thrown value to a user-facing message; a stale session reads as such. */
+function toActionError(e: unknown, fallback = "Something went wrong."): string {
+  if (e instanceof Error && e.message === "Unauthorized") {
+    return "Your session expired. Sign in again.";
+  }
+  return fallback;
+}
 
 function parseSpecs(value: string | undefined): Record<string, string> {
   if (!value?.trim()) return {};
@@ -260,11 +270,7 @@ export async function retryPostImage(id: string): Promise<PostActionState> {
     return { ok: true, message: "Image updated." };
   } catch (e) {
     console.warn(e);
-    const message =
-      e instanceof Error && e.message === "Unauthorized"
-        ? "Your session expired. Sign in again."
-        : "Something went wrong.";
-    return { ok: false, message };
+    return { ok: false, message: toActionError(e) };
   }
 }
 
@@ -276,13 +282,33 @@ export async function setPostPublished(
     await requireAdmin();
 
     const [post] = await db
-      .select({ publishedAt: posts.publishedAt, slug: posts.slug })
+      .select({
+        publishedAt: posts.publishedAt,
+        slug: posts.slug,
+        body: posts.body,
+        faqs: posts.faqs,
+        specs: posts.specs,
+      })
       .from(posts)
       .where(eq(posts.id, id))
       .limit(1);
 
     if (!post) {
       return { ok: false, message: "Post not found." };
+    }
+
+    if (is_published) {
+      const issue = checkPublishQuality({
+        body: post.body,
+        faqs: Array.isArray(post.faqs)
+          ? (post.faqs as Array<{ q: string; a: string }>)
+          : [],
+        specs:
+          post.specs && typeof post.specs === "object" && !Array.isArray(post.specs)
+            ? (post.specs as Record<string, string>)
+            : {},
+      });
+      if (issue) return { ok: false, message: issue };
     }
 
     const firstPublish = is_published && !post.publishedAt;
@@ -307,11 +333,7 @@ export async function setPostPublished(
     return { ok: true };
   } catch (e) {
     console.warn(e);
-    const message =
-      e instanceof Error && e.message === "Unauthorized"
-        ? "Your session expired. Sign in again."
-        : "Something went wrong.";
-    return { ok: false, message };
+    return { ok: false, message: toActionError(e) };
   }
 }
 
@@ -331,11 +353,7 @@ export async function deletePost(id: string): Promise<PostActionState> {
     return { ok: true };
   } catch (e) {
     console.warn(e);
-    const message =
-      e instanceof Error && e.message === "Unauthorized"
-        ? "Your session expired. Sign in again."
-        : "Something went wrong.";
-    return { ok: false, message };
+    return { ok: false, message: toActionError(e) };
   }
 }
 
@@ -353,6 +371,15 @@ export async function createPost(
   try {
     await requireAdmin();
     const values = await preparePostValues(parsed.data);
+
+    if (values.isPublished) {
+      const issue = checkPublishQuality({
+        body: values.body,
+        faqs: values.faqs,
+        specs: values.specs,
+      });
+      if (issue) return { ok: false, message: issue };
+    }
 
     const [inserted] = await db
       .insert(posts)
@@ -387,23 +414,11 @@ export async function createPost(
     return { ok: true, id: inserted?.id, message: "Post created." };
   } catch (e) {
     console.warn(e);
-    const code =
-      typeof e === "object" &&
-      e !== null &&
-      "code" in e &&
-      typeof e.code === "string"
-        ? e.code
-        : undefined;
-    if (code === "23505") {
+    if (getDbErrorCode(e) === "23505") {
       return { ok: false, message: "A post with this slug already exists." };
     }
-    const message =
-      e instanceof Error && e.message === "Unauthorized"
-        ? "Your session expired. Sign in again."
-        : e instanceof Error
-          ? e.message
-          : "Something went wrong.";
-    return { ok: false, message };
+    const fallback = e instanceof Error ? e.message : undefined;
+    return { ok: false, message: toActionError(e, fallback) };
   }
 }
 
@@ -433,6 +448,16 @@ export async function updatePost(
     }
 
     const values = await preparePostValues(parsed.data);
+
+    if (values.isPublished) {
+      const issue = checkPublishQuality({
+        body: values.body,
+        faqs: values.faqs,
+        specs: values.specs,
+      });
+      if (issue) return { ok: false, message: issue };
+    }
+
     const firstPublish = values.isPublished && !existing.publishedAt;
     // Retain publishedAt on unpublish (matches setPostPublished) so the first-
     // publish pin does not re-fire when a post is unpublished then republished.
@@ -477,22 +502,56 @@ export async function updatePost(
     return { ok: true, id, message: "Post saved." };
   } catch (e) {
     console.warn(e);
-    const code =
-      typeof e === "object" &&
-      e !== null &&
-      "code" in e &&
-      typeof e.code === "string"
-        ? e.code
-        : undefined;
-    if (code === "23505") {
+    if (getDbErrorCode(e) === "23505") {
       return { ok: false, message: "A post with this slug already exists." };
     }
-    const message =
-      e instanceof Error && e.message === "Unauthorized"
-        ? "Your session expired. Sign in again."
-        : e instanceof Error
-          ? e.message
-          : "Something went wrong.";
-    return { ok: false, message };
+    const fallback = e instanceof Error ? e.message : undefined;
+    return { ok: false, message: toActionError(e, fallback) };
+  }
+}
+
+/** Published reviews untouched for this many days are considered stale. */
+const STALE_REFRESH_DAYS = 90;
+
+/**
+ * Bumps `updated_at` on published reviews that have not changed in a while so
+ * search engines see a freshness signal and re-crawl them (also refreshes
+ * sitemap lastModified). Intended to be triggered periodically by an admin.
+ */
+export async function refreshStalePosts(): Promise<PostActionState> {
+  try {
+    await requireAdmin();
+
+    const cutoff = new Date(
+      Date.now() - STALE_REFRESH_DAYS * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const now = new Date().toISOString();
+    const staleFilter = and(
+      eq(posts.isPublished, true),
+      lt(posts.updatedAt, cutoff),
+    );
+
+    const stale = await db
+      .select({ slug: posts.slug })
+      .from(posts)
+      .where(staleFilter);
+
+    if (stale.length === 0) {
+      return { ok: true, message: "All published reviews are already fresh." };
+    }
+
+    await db.update(posts).set({ updatedAt: now }).where(staleFilter);
+
+    for (const post of stale) revalidatePath(`/blog/${post.slug}`);
+    revalidatePath("/blog");
+    revalidatePath("/");
+
+    return {
+      ok: true,
+      message: `Refreshed ${stale.length} stale review${stale.length === 1 ? "" : "s"}.`,
+    };
+  } catch (e) {
+    console.warn(e);
+    return { ok: false, message: toActionError(e) };
   }
 }
