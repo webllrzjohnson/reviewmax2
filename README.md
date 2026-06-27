@@ -25,7 +25,15 @@ See **DEPLOYMENT.md** for Coolify/VPS production deployment.
 
 ## Generating reviews
 
-Set `OPENAI_API_KEY` in `.env.local`, then go to `/dashboard/new-review`. Submitting a product generates a draft review with AI, fetches the product image from Amazon, and saves it unpublished for you to review and publish. Public suggestions from `/suggest` land in `/dashboard/review-requests`, where **Process** generates a draft the same way.
+Set `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` in `.env.local` (Claude is the primary generator, OpenAI the automatic fallback), then go to `/dashboard/new-review`. Submitting a product generates a draft review, auto-creates the category if needed, fetches the product image from Amazon, and saves it unpublished for you to review and publish. Public suggestions from `/suggest` land in `/dashboard/review-requests`, where **Process** generates a draft the same way.
+
+### Bulk discovery
+
+`/dashboard/discover` searches Amazon for a whole category (via SerpApi), skips products already reviewed, and generates a draft for each new one. Requires `SERPAPI_KEY`.
+
+### Pinterest (optional)
+
+When `PINTEREST_ACCESS_TOKEN` is set, each generated review also renders a Pin image (headless Chrome) and posts it to Pinterest. Set `PUPPETEER_EXECUTABLE_PATH` to your local Chrome to render pins on Windows.
 
 ## Scripts
 
@@ -45,4 +53,5 @@ Set `OPENAI_API_KEY` in `.env.local`, then go to `/dashboard/new-review`. Submit
 - **Frontend:** Next.js 15 App Router, Tailwind, shadcn/ui
 - **Database:** PostgreSQL + Drizzle ORM
 - **Auth:** Auth.js (admin credentials)
-- **AI:** OpenAI (in-app review generation + editor assist)
+- **AI:** Claude (primary) + OpenAI (fallback) for in-app review generation
+- **Discovery:** SerpApi Amazon search; **Social:** Pinterest auto-posting (both optional)

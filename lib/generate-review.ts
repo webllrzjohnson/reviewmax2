@@ -1,17 +1,15 @@
 import OpenAI from "openai";
 import { z } from "zod";
-import { getCategoryBySlug } from "@/lib/data";
 import {
   expandAmazonProductUrl,
   resolveAmazonProductImageUrl,
 } from "@/lib/amazon-image";
-
-const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+import { coerceProductImageUrl } from "@/lib/image-url";
 
 /** Shape the model is asked to return; validated before we trust any field. */
 export const GeneratedReviewSchema = z.object({
   title: z.string().min(1).max(500),
-  slug: z.string().min(1).max(200),
+  slug: z.string().optional(),
   excerpt: z.string().min(1).max(2000),
   body: z.string().min(1),
   rating: z.number().min(0).max(5),
@@ -28,7 +26,7 @@ export type GeneratedReviewDraft = {
   slug: string;
   excerpt: string;
   body: string;
-  categoryId: string;
+  categorySlug: string;
   rating: number;
   pros: string[];
   cons: string[];
@@ -38,47 +36,46 @@ export type GeneratedReviewDraft = {
 };
 
 export type GenerateReviewResult =
-  | { ok: true; draft: GeneratedReviewDraft }
+  | { ok: true; draft: GeneratedReviewDraft; model: "claude" | "openai" }
   | { ok: false; message: string };
 
-const MODEL = "gpt-4o-mini";
+const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+const OPENAI_MODEL = "gpt-4o-mini";
 
 export async function generateReviewDraft(params: {
   product_name: string;
   category_slug: string;
   amazon_url: string;
   notes: string | null;
+  image_url?: string | null;
 }): Promise<GenerateReviewResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  const hasClaude = Boolean(process.env.ANTHROPIC_API_KEY);
+  const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
+
+  if (!hasClaude && !hasOpenAI) {
     return {
       ok: false,
       message:
-        "OPENAI_API_KEY is not configured. Add it to your environment variables to generate reviews.",
-    };
-  }
-
-  const category = await getCategoryBySlug(params.category_slug);
-  if (!category) {
-    return {
-      ok: false,
-      message: `Unknown category "${params.category_slug}". Create it first.`,
+        "No AI key configured. Set ANTHROPIC_API_KEY (primary) and/or OPENAI_API_KEY (fallback) to generate reviews.",
     };
   }
 
   const amazonUrl = await expandAmazonProductUrl(params.amazon_url);
 
+  // Collision-proof slug: derived from the product name plus a timestamp,
+  // never trusting the model's slug (matches the original n8n behavior).
   const slugBase = params.product_name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+    .slice(0, 60)
+    .replace(/-+$/, "");
+  const slug = `${slugBase || "product"}-${Date.now().toString(36)}`;
 
   const system = `You write honest Amazon affiliate product reviews for Verdict.
 Return ONLY valid JSON (no markdown fences) matching this schema:
 {
   "title": "string",
-  "slug": "lowercase-kebab-case",
   "excerpt": "1-2 sentences",
   "body": "markdown article, 400-800 words",
   "rating": 0-5 number with one decimal,
@@ -86,7 +83,6 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
   "cons": ["string", ...],
   "verdict": "2-4 sentence summary"
 }
-Use a slug starting with: ${slugBase}-review
 Do not invent fake test results; write a plausible editorial tone.
 Product images are fetched from Amazon when the review is published - do not include an image URL.`;
 
@@ -95,23 +91,35 @@ Category slug: ${params.category_slug}
 Amazon URL: ${amazonUrl}
 ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
 
-  let raw: string;
-  try {
-    const client = new OpenAI({ apiKey });
-    const response = await client.chat.completions.create({
-      model: MODEL,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 4096,
-      temperature: 0.6,
-    });
-    raw = response.choices[0]?.message?.content ?? "";
-  } catch (error) {
-    console.error("generateReviewDraft: OpenAI request failed", error);
-    return { ok: false, message: "AI request failed. Try again." };
+  // Claude is primary; OpenAI is the fallback (mirrors the n8n If/branch).
+  let raw = "";
+  let model: "claude" | "openai" | null = null;
+
+  if (hasClaude) {
+    try {
+      raw = await callClaude(system, user);
+      if (raw.trim()) model = "claude";
+    } catch (error) {
+      console.error("generateReviewDraft: Claude request failed", error);
+    }
+  }
+
+  if (!model && hasOpenAI) {
+    try {
+      raw = await callOpenAI(system, user);
+      if (raw.trim()) model = "openai";
+    } catch (error) {
+      console.error("generateReviewDraft: OpenAI request failed", error);
+    }
+  }
+
+  if (!model) {
+    return {
+      ok: false,
+      message: hasClaude
+        ? "AI generation failed (Claude and fallback). Try again."
+        : "AI generation failed. Try again.",
+    };
   }
 
   const parsedJson = parseJsonLoose(raw);
@@ -134,25 +142,19 @@ ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
 
   const review = result.data;
 
-  const slug = review.slug
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/^-+|-+$/g, "");
-
-  if (!slug || !slugRegex.test(slug)) {
-    return { ok: false, message: "AI produced an invalid slug. Try again." };
-  }
-
-  const imageUrl = await resolveAmazonProductImageUrl(amazonUrl);
+  // Use the provided image when present (e.g. from discovery); otherwise scrape.
+  const passthroughImage = coerceProductImageUrl(params.image_url);
+  const imageUrl = passthroughImage ?? (await resolveAmazonProductImageUrl(amazonUrl));
 
   return {
     ok: true,
+    model,
     draft: {
       title: review.title.slice(0, 500),
       slug,
       excerpt: review.excerpt.slice(0, 2000),
       body: review.body,
-      categoryId: category.id,
+      categorySlug: params.category_slug,
       rating: review.rating,
       pros: review.pros,
       cons: review.cons,
@@ -161,6 +163,48 @@ ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
       imageUrl,
     },
   };
+}
+
+async function callClaude(system: string, user: string): Promise<string> {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "anthropic-version": "2023-06-01",
+      "x-api-key": process.env.ANTHROPIC_API_KEY ?? "",
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 4096,
+      system,
+      messages: [{ role: "user", content: user }],
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Claude ${response.status}: ${text.slice(0, 200)}`);
+  }
+
+  const data = (await response.json()) as {
+    content?: Array<{ text?: string }>;
+  };
+  return data.content?.[0]?.text ?? "";
+}
+
+async function callOpenAI(system: string, user: string): Promise<string> {
+  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const response = await client.chat.completions.create({
+    model: OPENAI_MODEL,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    response_format: { type: "json_object" },
+    max_tokens: 4096,
+    temperature: 0.6,
+  });
+  return response.choices[0]?.message?.content ?? "";
 }
 
 /** Parse JSON, falling back to the first {...} block if the model added prose. */

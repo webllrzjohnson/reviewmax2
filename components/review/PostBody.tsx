@@ -37,6 +37,14 @@ export function PostBody({ body }: { body: string }) {
               img: ["src", "srcset", "alt", "title", "width", "height", "loading"],
               a: ["href", "name", "target", "rel"],
             },
+            transformTags: {
+              a: (tagName, attribs) => {
+                if (attribs.target === "_blank") {
+                  attribs.rel = "noopener noreferrer";
+                }
+                return { tagName, attribs };
+              },
+            },
           }),
         }}
       />

@@ -41,6 +41,12 @@ export default function AdminDashboardShellLayout({
               New review request
             </Link>
             <Link
+              href="/dashboard/discover"
+              className="text-primary hover:underline"
+            >
+              Discover
+            </Link>
+            <Link
               href="/"
               className="text-muted-foreground hover:text-foreground"
             >

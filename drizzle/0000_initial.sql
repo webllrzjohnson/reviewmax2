@@ -34,11 +34,24 @@ CREATE TABLE "posts" (
 	"verdict" text NOT NULL,
 	"amazon_url" text NOT NULL,
 	"image_url" text,
+	"gallery_urls" text[] DEFAULT '{}'::text[] NOT NULL,
+	"badge" text,
+	"faqs" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"price_at_review" text,
+	"specs" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"is_published" boolean DEFAULT false NOT NULL,
 	"published_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "posts_slug_unique" UNIQUE("slug")
+);
+--> statement-breakpoint
+CREATE TABLE "review_feedback" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"post_slug" text NOT NULL,
+	"helpful" boolean NOT NULL,
+	"fingerprint" text NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "newsletter_subscribers" (
@@ -55,12 +68,17 @@ CREATE TABLE "review_requests" (
 	"amazon_url" text NOT NULL,
 	"notes" text,
 	"created_by" uuid,
+	"processed_at" timestamp with time zone,
+	"processed_by" uuid,
+	"process_error" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 ALTER TABLE "posts" ADD CONSTRAINT "posts_category_id_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE restrict ON UPDATE no action;
 --> statement-breakpoint
 ALTER TABLE "review_requests" ADD CONSTRAINT "review_requests_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
+--> statement-breakpoint
+ALTER TABLE "review_requests" ADD CONSTRAINT "review_requests_processed_by_users_id_fk" FOREIGN KEY ("processed_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
 CREATE INDEX "posts_slug_idx" ON "posts" USING btree ("slug");
 --> statement-breakpoint
@@ -69,6 +87,8 @@ CREATE INDEX "posts_category_id_idx" ON "posts" USING btree ("category_id");
 CREATE INDEX "posts_is_published_idx" ON "posts" USING btree ("is_published");
 --> statement-breakpoint
 CREATE INDEX "posts_published_at_idx" ON "posts" USING btree ("published_at" DESC);
+--> statement-breakpoint
+CREATE UNIQUE INDEX "review_feedback_slug_fp_idx" ON "review_feedback" USING btree ("post_slug", "fingerprint");
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS trigger AS $$

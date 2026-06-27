@@ -38,10 +38,14 @@ Add every variable from `.env.example` to Coolify:
 | `AUTH_URL` | Public site URL, e.g. `https://reviews.yourdomain.com` |
 | `ADMIN_EMAIL` | Seeded admin login email |
 | `ADMIN_INITIAL_PASSWORD` | One-time seed password; rotate after first login |
-| `OPENAI_API_KEY` | Required for in-app review generation and editor assist |
+| `ANTHROPIC_API_KEY` | Primary review generator (Claude) |
+| `OPENAI_API_KEY` | Fallback generator + editor assist |
+| `SERPAPI_KEY` | Optional; enables `/dashboard/discover` bulk search |
+| `PINTEREST_ACCESS_TOKEN` | Optional; enables Pin generation + posting |
+| `PUPPETEER_EXECUTABLE_PATH` | Path to Chrome/Chromium for pin rendering |
 | `NEXT_PUBLIC_SITE_URL` | Same as public URL |
 
-Server-only (never expose to browser): `DATABASE_URL`, `AUTH_SECRET`, `OPENAI_API_KEY`, `SENTRY_DSN`.
+Server-only (never expose to browser): `DATABASE_URL`, `AUTH_SECRET`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `SERPAPI_KEY`, `PINTEREST_ACCESS_TOKEN`, `SENTRY_DSN`.
 
 ## 3. Deploy to Coolify
 
@@ -75,12 +79,16 @@ Re-run `npm run db:migrate` after pulling updates that add SQL files under `driz
 
 Reviews are generated in-app — no external automation service is required.
 
-1. Set `OPENAI_API_KEY` in the app environment.
+1. Set `ANTHROPIC_API_KEY` (primary) and/or `OPENAI_API_KEY` (fallback) in the app environment.
 2. Sign in and go to `/dashboard/new-review`.
-3. Submitting a product calls OpenAI to draft the review, fetches the product image from Amazon, and saves an **unpublished** post.
+3. Submitting a product drafts the review (Claude, falling back to OpenAI), auto-creates the category if needed, fetches the product image from Amazon, and saves an **unpublished** post.
 4. Review and publish the draft from `/dashboard/posts`.
 
 Public suggestions from `/suggest` appear in `/dashboard/review-requests`; **Process** generates a draft the same way.
+
+**Bulk discovery:** `/dashboard/discover` (requires `SERPAPI_KEY`) searches a category on Amazon and generates a draft for each new product.
+
+**Pinterest (optional):** set `PINTEREST_ACCESS_TOKEN` (and `PUPPETEER_EXECUTABLE_PATH` for a Chrome/Chromium binary) to render a Pin image and post it after each draft is created. The production Docker image already includes Chromium at `/usr/bin/chromium-browser`.
 
 ## 5. Post-deploy checklist
 
