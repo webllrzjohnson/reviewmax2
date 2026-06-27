@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { posts } from "@/lib/db/schema";
+import { categories, posts } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
 import { expandAmazonProductUrl, resolveAmazonProductImageUrl } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
+import { maybePostReviewToPinterest } from "@/lib/pinterest";
 import { PostEditorSchema, type PostEditorInput } from "@/lib/validations";
 
 export type PostActionState = { ok: boolean; message?: string; id?: string };
@@ -104,6 +105,38 @@ function revalidatePostPaths(slug?: string) {
   }
 }
 
+/** Best-effort Pinterest pin on first publish; never blocks the publish action. */
+async function maybePinOnFirstPublish(postId: string) {
+  try {
+    const [row] = await db
+      .select({
+        title: posts.title,
+        excerpt: posts.excerpt,
+        slug: posts.slug,
+        rating: posts.rating,
+        imageUrl: posts.imageUrl,
+        categorySlug: categories.slug,
+      })
+      .from(posts)
+      .innerJoin(categories, eq(posts.categoryId, categories.id))
+      .where(eq(posts.id, postId))
+      .limit(1);
+
+    if (!row) return;
+
+    await maybePostReviewToPinterest({
+      title: row.title,
+      excerpt: row.excerpt,
+      slug: row.slug,
+      categorySlug: row.categorySlug,
+      rating: Number(row.rating),
+      imageUrl: row.imageUrl,
+    });
+  } catch (error) {
+    console.error("maybePinOnFirstPublish: failed", error);
+  }
+}
+
 export async function revalidatePostAction(slug: string): Promise<PostActionState> {
   try {
     await requireAdmin();
@@ -140,6 +173,9 @@ export async function bulkSetPostsPublished(
       .from(posts)
       .where(inArray(posts.id, ids));
 
+    // Pinterest posting is intentionally skipped for bulk publishes: each pin
+    // spawns Puppeteer, so generating N inline would risk a server-action
+    // timeout. Pin individual posts via setPostPublished/createPost/updatePost.
     for (const post of existing) {
       await db
         .update(posts)
@@ -249,6 +285,8 @@ export async function setPostPublished(
       return { ok: false, message: "Post not found." };
     }
 
+    const firstPublish = is_published && !post.publishedAt;
+
     await db
       .update(posts)
       .set({
@@ -260,6 +298,10 @@ export async function setPostPublished(
         updatedAt: new Date().toISOString(),
       })
       .where(eq(posts.id, id));
+
+    if (firstPublish) {
+      await maybePinOnFirstPublish(id);
+    }
 
     revalidatePostPaths(post.slug);
     return { ok: true };
@@ -337,6 +379,10 @@ export async function createPost(
       })
       .returning({ id: posts.id });
 
+    if (values.isPublished && inserted?.id) {
+      await maybePinOnFirstPublish(inserted.id);
+    }
+
     revalidatePostPaths(values.slug);
     return { ok: true, id: inserted?.id, message: "Post created." };
   } catch (e) {
@@ -387,12 +433,12 @@ export async function updatePost(
     }
 
     const values = await preparePostValues(parsed.data);
-    const publishedAt =
-      values.isPublished && !existing.publishedAt
-        ? new Date().toISOString()
-        : values.isPublished
-          ? existing.publishedAt
-          : null;
+    const firstPublish = values.isPublished && !existing.publishedAt;
+    // Retain publishedAt on unpublish (matches setPostPublished) so the first-
+    // publish pin does not re-fire when a post is unpublished then republished.
+    const publishedAt = firstPublish
+      ? new Date().toISOString()
+      : existing.publishedAt;
 
     await db
       .update(posts)
@@ -418,6 +464,10 @@ export async function updatePost(
         updatedAt: values.updatedAt,
       })
       .where(eq(posts.id, id));
+
+    if (firstPublish) {
+      await maybePinOnFirstPublish(id);
+    }
 
     revalidatePostPaths(existing.slug);
     if (existing.slug !== values.slug) {

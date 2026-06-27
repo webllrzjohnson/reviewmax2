@@ -5,7 +5,6 @@ import { db } from "@/lib/db";
 import { categories, posts } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
 import { generateReviewDraft } from "@/lib/generate-review";
-import { maybePostReviewToPinterest } from "@/lib/pinterest";
 
 export type GenerateReviewActionResult = {
   ok: boolean;
@@ -30,9 +29,8 @@ async function resolveCategoryId(slug: string): Promise<string | null> {
 
 /**
  * Generates a review draft (Claude primary, OpenAI fallback) and inserts it as
- * an unpublished post. Auto-creates the category if needed, then best-effort
- * posts a Pin to Pinterest. Prompt building, the model call, parsing, and the
- * DB insert all happen in-process here.
+ * an unpublished post. Auto-creates the category if needed. Prompt building,
+ * the model call, parsing, and the DB insert all happen in-process here.
  */
 export async function generateAndInsertReview(params: {
   product_name: string;
@@ -86,16 +84,6 @@ export async function generateAndInsertReview(params: {
     if (!inserted) {
       return { ok: false, message: "Database error while saving the draft." };
     }
-
-    // Best-effort Pinterest posting; never blocks the draft from saving.
-    await maybePostReviewToPinterest({
-      title: draft.title,
-      excerpt: draft.excerpt,
-      slug: inserted.slug,
-      categorySlug: draft.categorySlug,
-      rating: draft.rating,
-      imageUrl: draft.imageUrl,
-    });
 
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/posts");

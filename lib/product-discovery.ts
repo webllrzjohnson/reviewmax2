@@ -2,6 +2,10 @@ import { db } from "@/lib/db";
 import { posts } from "@/lib/db/schema";
 import { extractAsinFromAmazonUrl } from "@/lib/amazon-image";
 import { COUNTRY_TO_AMAZON_DOMAIN } from "@/lib/countries";
+import {
+  dedupeSerpResultsByBrand,
+  type SerpApiItem,
+} from "@/lib/serp-products";
 
 export type DiscoveredProduct = {
   rank: number;
@@ -14,14 +18,6 @@ export type DiscoveredProduct = {
 export type DiscoverResult =
   | { ok: true; products: DiscoveredProduct[] }
   | { ok: false; message: string };
-
-type SerpApiItem = {
-  title?: string;
-  brand?: string;
-  thumbnail?: string;
-  link?: string;
-  asin?: string;
-};
 
 /**
  * Searches Amazon via SerpApi and returns the top de-duplicated products,
@@ -70,19 +66,8 @@ export async function discoverProducts(
   }
 
   const categorySlug = searchTerm.toLowerCase().replace(/\s+/g, "-");
-  const seenBrands = new Set<string>();
 
-  const filtered = organic
-    .filter((item) => {
-      const title = String(item.title ?? "");
-      const brand = (
-        item.brand || title.split(" ").slice(0, 2).join(" ")
-      ).toLowerCase();
-      if (!title || seenBrands.has(brand)) return false;
-      seenBrands.add(brand);
-      return true;
-    })
-    .slice(0, 6);
+  const filtered = dedupeSerpResultsByBrand(organic, 6);
 
   const products: DiscoveredProduct[] = filtered.map((item, i) => {
     let image: string | null = item.thumbnail?.trim() ? item.thumbnail : null;

@@ -11,6 +11,9 @@ import {
   filterExistingByAsin,
 } from "@/lib/product-discovery";
 
+/** Max drafts generated per discovery run to avoid server action timeouts. */
+const MAX_GENERATE_PER_RUN = 3;
+
 export type DiscoverItemResult = {
   name: string;
   ok: boolean;
@@ -54,8 +57,10 @@ export async function discoverAndEnqueueAction(input: {
 
   const fresh = await filterExistingByAsin(discovered.products);
   const skipped = discovered.products.length - fresh.length;
+  const batch = fresh.slice(0, MAX_GENERATE_PER_RUN);
+  const deferred = fresh.length - batch.length;
 
-  if (fresh.length === 0) {
+  if (batch.length === 0) {
     return {
       ok: true,
       skipped,
@@ -66,7 +71,7 @@ export async function discoverAndEnqueueAction(input: {
 
   const results: DiscoverItemResult[] = [];
 
-  for (const product of fresh) {
+  for (const product of batch) {
     let requestId: string | null = null;
     try {
       const [inserted] = await db
@@ -124,12 +129,15 @@ export async function discoverAndEnqueueAction(input: {
   revalidatePath("/dashboard/review-requests");
 
   const created = results.filter((r) => r.ok).length;
+  const deferredNote = deferred
+    ? ` ${deferred} more new product${deferred === 1 ? "" : "s"} skipped this run — run discovery again to process ${deferred === 1 ? "it" : "them"}.`
+    : "";
   return {
     ok: true,
     skipped,
     results,
-    message: `Generated ${created} of ${fresh.length} new products${
+    message: `Generated ${created} of ${batch.length} new products${
       skipped ? ` (${skipped} skipped as duplicates)` : ""
-    }.`,
+    }.${deferredNote}`,
   };
 }

@@ -2,21 +2,30 @@ import { generatePinImage } from "@/lib/pin";
 
 /**
  * Picks a Pinterest board id from the category, mirroring the original n8n
- * keyword routing. Each board is overridable via env vars.
+ * keyword routing. Each board must be set via env vars; returns null when none
+ * match.
  */
-export function pickBoardId(category: string): string {
+export function pickBoardId(category: string): string | null {
   const c = category.toLowerCase();
 
-  const hair = process.env.PINTEREST_BOARD_HAIR || "626211591877777083";
-  const beauty = process.env.PINTEREST_BOARD_BEAUTY || "626211591877777082";
-  const skin = process.env.PINTEREST_BOARD_SKIN || "626211591877777085";
-  const fallback =
-    process.env.PINTEREST_DEFAULT_BOARD_ID || "626211591877777084";
+  const hair = process.env.PINTEREST_BOARD_HAIR;
+  const beauty = process.env.PINTEREST_BOARD_BEAUTY;
+  const skin = process.env.PINTEREST_BOARD_SKIN;
+  const fallback = process.env.PINTEREST_DEFAULT_BOARD_ID;
 
-  if (c.includes("hair")) return hair;
-  if (c.includes("luxury") || c.includes("beauty")) return beauty;
-  if (c.includes("skin") || c.includes("sunscreen")) return skin;
-  return fallback;
+  if (c.includes("hair") && hair) return hair;
+  if ((c.includes("luxury") || c.includes("beauty")) && beauty) return beauty;
+  if ((c.includes("skin") || c.includes("sunscreen")) && skin) return skin;
+  return fallback ?? null;
+}
+
+function isLocalSiteUrl(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1");
+  }
 }
 
 async function postToPinterest(params: {
@@ -59,9 +68,10 @@ export type PinterestResult = {
 };
 
 /**
- * Best-effort: generates a pin image and posts it to Pinterest. Returns rather
- * than throwing so a failure never blocks the review draft from saving. No-ops
- * when PINTEREST_ACCESS_TOKEN is unset or there is no product image.
+ * Best-effort: generates a pin image and posts it to Pinterest on publish.
+ * Returns rather than throwing so a failure never blocks publishing. No-ops when
+ * PINTEREST_ACCESS_TOKEN is unset, the site URL is local, or there is no board
+ * or product image.
  */
 export async function maybePostReviewToPinterest(params: {
   title: string;
@@ -74,6 +84,26 @@ export async function maybePostReviewToPinterest(params: {
   if (!process.env.PINTEREST_ACCESS_TOKEN) {
     return { ok: false, skipped: true, message: "PINTEREST_ACCESS_TOKEN unset" };
   }
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  if (isLocalSiteUrl(baseUrl)) {
+    return {
+      ok: false,
+      skipped: true,
+      message: "Local site URL; skipping Pinterest",
+    };
+  }
+
+  const boardId = pickBoardId(params.categorySlug);
+  if (!boardId) {
+    return {
+      ok: false,
+      skipped: true,
+      message: "No Pinterest board configured for this category",
+    };
+  }
+
   if (!params.imageUrl) {
     return { ok: false, skipped: true, message: "No product image for pin" };
   }
@@ -92,11 +122,8 @@ export async function maybePostReviewToPinterest(params: {
       return { ok: false, skipped: false, message: pin.error };
     }
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-
     await postToPinterest({
-      boardId: pickBoardId(params.categorySlug),
+      boardId,
       title: params.title,
       description: params.excerpt,
       link: `${baseUrl}/blog/${params.slug}`,

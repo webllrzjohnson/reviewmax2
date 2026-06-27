@@ -5,11 +5,11 @@ import {
   resolveAmazonProductImageUrl,
 } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
+import { parseJsonLoose } from "@/lib/parse-json";
 
 /** Shape the model is asked to return; validated before we trust any field. */
 export const GeneratedReviewSchema = z.object({
   title: z.string().min(1).max(500),
-  slug: z.string().optional(),
   excerpt: z.string().min(1).max(2000),
   body: z.string().min(1),
   rating: z.number().min(0).max(5),
@@ -62,8 +62,6 @@ export async function generateReviewDraft(params: {
 
   const amazonUrl = await expandAmazonProductUrl(params.amazon_url);
 
-  // Collision-proof slug: derived from the product name plus a timestamp,
-  // never trusting the model's slug (matches the original n8n behavior).
   const slugBase = params.product_name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -91,77 +89,79 @@ Category slug: ${params.category_slug}
 Amazon URL: ${amazonUrl}
 ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
 
-  // Claude is primary; OpenAI is the fallback (mirrors the n8n If/branch).
-  let raw = "";
-  let model: "claude" | "openai" | null = null;
+  const providers: Array<"claude" | "openai"> = [];
+  if (hasClaude) providers.push("claude");
+  if (hasOpenAI) providers.push("openai");
 
-  if (hasClaude) {
+  let lastError = "AI generation failed. Try again.";
+
+  for (const provider of providers) {
+    let raw = "";
     try {
-      raw = await callClaude(system, user);
-      if (raw.trim()) model = "claude";
+      raw =
+        provider === "claude"
+          ? await callClaude(system, user)
+          : await callOpenAI(system, user);
     } catch (error) {
-      console.error("generateReviewDraft: Claude request failed", error);
+      console.error(`generateReviewDraft: ${provider} request failed`, error);
+      lastError =
+        provider === "claude" && providers.includes("openai")
+          ? "Claude failed; trying fallback."
+          : "AI request failed. Try again.";
+      continue;
     }
-  }
 
-  if (!model && hasOpenAI) {
-    try {
-      raw = await callOpenAI(system, user);
-      if (raw.trim()) model = "openai";
-    } catch (error) {
-      console.error("generateReviewDraft: OpenAI request failed", error);
+    if (!raw.trim()) {
+      lastError = "AI returned an empty response.";
+      continue;
     }
-  }
 
-  if (!model) {
+    const parsedJson = parseJsonLoose(raw);
+    if (parsedJson === undefined) {
+      lastError = "AI did not return valid JSON.";
+      continue;
+    }
+
+    const result = GeneratedReviewSchema.safeParse(parsedJson);
+    if (!result.success) {
+      console.error(
+        `generateReviewDraft: ${provider} output validation failed`,
+        result.error.flatten(),
+      );
+      lastError = "AI response did not match the expected review format.";
+      continue;
+    }
+
+    const review = result.data;
+    const passthroughImage = coerceProductImageUrl(params.image_url);
+    const imageUrl =
+      passthroughImage ?? (await resolveAmazonProductImageUrl(amazonUrl));
+
     return {
-      ok: false,
-      message: hasClaude
-        ? "AI generation failed (Claude and fallback). Try again."
-        : "AI generation failed. Try again.",
+      ok: true,
+      model: provider,
+      draft: {
+        title: review.title.slice(0, 500),
+        slug,
+        excerpt: review.excerpt.slice(0, 2000),
+        body: review.body,
+        categorySlug: params.category_slug,
+        rating: review.rating,
+        pros: review.pros,
+        cons: review.cons,
+        verdict: review.verdict.slice(0, 2000),
+        amazonUrl,
+        imageUrl,
+      },
     };
   }
-
-  const parsedJson = parseJsonLoose(raw);
-  if (parsedJson === undefined) {
-    return { ok: false, message: "AI did not return valid JSON. Try again." };
-  }
-
-  const result = GeneratedReviewSchema.safeParse(parsedJson);
-  if (!result.success) {
-    console.error(
-      "generateReviewDraft: output validation failed",
-      result.error.flatten(),
-    );
-    return {
-      ok: false,
-      message:
-        "AI response did not match the expected review format. Try again.",
-    };
-  }
-
-  const review = result.data;
-
-  // Use the provided image when present (e.g. from discovery); otherwise scrape.
-  const passthroughImage = coerceProductImageUrl(params.image_url);
-  const imageUrl = passthroughImage ?? (await resolveAmazonProductImageUrl(amazonUrl));
 
   return {
-    ok: true,
-    model,
-    draft: {
-      title: review.title.slice(0, 500),
-      slug,
-      excerpt: review.excerpt.slice(0, 2000),
-      body: review.body,
-      categorySlug: params.category_slug,
-      rating: review.rating,
-      pros: review.pros,
-      cons: review.cons,
-      verdict: review.verdict.slice(0, 2000),
-      amazonUrl,
-      imageUrl,
-    },
+    ok: false,
+    message:
+      providers.length > 1
+        ? "AI generation failed (Claude and fallback). Try again."
+        : lastError,
   };
 }
 
@@ -205,19 +205,4 @@ async function callOpenAI(system: string, user: string): Promise<string> {
     temperature: 0.6,
   });
   return response.choices[0]?.message?.content ?? "";
-}
-
-/** Parse JSON, falling back to the first {...} block if the model added prose. */
-function parseJsonLoose(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return undefined;
-    try {
-      return JSON.parse(match[0]);
-    } catch {
-      return undefined;
-    }
-  }
 }

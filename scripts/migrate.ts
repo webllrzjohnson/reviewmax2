@@ -38,7 +38,12 @@ async function ensureMigrationsTable(sql: postgres.Sql) {
   `);
 }
 
-/** Existing DBs created before migration tracking should skip 0000_initial.sql. */
+/**
+ * Existing DBs created before migration tracking should skip 0000_initial.sql.
+ * The incremental migrations (0001+) are all idempotent (IF NOT EXISTS / guarded
+ * constraint), so they can safely run against a squashed or partially-migrated
+ * schema without being marked here.
+ */
 async function bootstrapLegacyDatabase(sql: postgres.Sql) {
   const [hasPosts] = await sql`
     SELECT 1 AS ok
