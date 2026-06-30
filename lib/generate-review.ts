@@ -48,7 +48,9 @@ export type GenerateReviewResult =
   | { ok: true; draft: GeneratedReviewDraft; model: "claude" | "openai" }
   | { ok: false; message: string };
 
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+/** Retired 2026-06-15; override with ANTHROPIC_MODEL if needed. */
+const CLAUDE_MODEL =
+  process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-6";
 const OPENAI_MODEL = "gpt-4o-mini";
 
 export async function generateReviewDraft(params: {
