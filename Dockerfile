@@ -34,6 +34,8 @@ RUN addgroup --system --gid 1001 nodejs && \
     
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# nextjs user must write image optimization cache at runtime
+RUN mkdir -p .next/cache && chown -R nextjs:nodejs /app
 
 USER nextjs
 EXPOSE 3000
