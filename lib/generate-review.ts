@@ -48,8 +48,52 @@ export type GenerateReviewResult =
   | { ok: true; draft: GeneratedReviewDraft; model: "claude" | "openai" }
   | { ok: false; message: string };
 
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+/** Retired 2026-06-15; override with ANTHROPIC_MODEL if needed. */
+const CLAUDE_MODEL =
+  process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-6";
 const OPENAI_MODEL = "gpt-4o-mini";
+
+/** Coerce common model formatting mistakes before Zod validation. */
+export function normalizeGeneratedReviewJson(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return input;
+  }
+
+  const obj = { ...(input as Record<string, unknown>) };
+
+  if (typeof obj.rating === "string") {
+    const parsed = Number.parseFloat(obj.rating);
+    if (!Number.isNaN(parsed)) obj.rating = parsed;
+  }
+
+  for (const key of ["pros", "cons"] as const) {
+    const value = obj[key];
+    if (typeof value === "string") {
+      obj[key] = value
+        .split(/\n+/)
+        .map((line) => line.replace(/^[-•*]\s*/, "").trim())
+        .filter(Boolean);
+    } else if (Array.isArray(value)) {
+      obj[key] = value.map((item) => String(item ?? "").trim()).filter(Boolean);
+    }
+  }
+
+  if (typeof obj.verdict !== "string" && obj.verdict != null) {
+    obj.verdict = String(obj.verdict);
+  }
+
+  if (typeof obj.title !== "string" && obj.title != null) {
+    obj.title = String(obj.title);
+  }
+  if (typeof obj.excerpt !== "string" && obj.excerpt != null) {
+    obj.excerpt = String(obj.excerpt);
+  }
+  if (typeof obj.body !== "string" && obj.body != null) {
+    obj.body = String(obj.body);
+  }
+
+  return obj;
+}
 
 export async function generateReviewDraft(params: {
   product_name: string;
@@ -136,7 +180,9 @@ ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
       continue;
     }
 
-    const result = GeneratedReviewSchema.safeParse(parsedJson);
+    const result = GeneratedReviewSchema.safeParse(
+      normalizeGeneratedReviewJson(parsedJson),
+    );
     if (!result.success) {
       console.error(
         `generateReviewDraft: ${provider} output validation failed`,
@@ -189,7 +235,7 @@ ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
     ok: false,
     message:
       providers.length > 1
-        ? "AI generation failed (Claude and fallback). Try again."
+        ? `AI generation failed (Claude and fallback). ${lastError}`
         : lastError,
   };
 }
