@@ -1,0 +1,127 @@
+import Link from "next/link";
+import { DiscoverForm } from "@/components/admin/DiscoverForm";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { getRecentAutomationRuns } from "@/lib/automation-data";
+import { cn, formatDate } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
+
+export default async function AutomationPage() {
+  const runs = await getRecentAutomationRuns(10);
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+          Automation
+        </h1>
+        <p className="mt-1 text-muted-foreground">
+          Run product discovery manually, review generated drafts, and inspect the
+          latest automation history before enabling scheduled cron.
+        </p>
+      </div>
+
+      <DiscoverForm />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent automation runs</CardTitle>
+          <CardDescription>
+            The last 10 product discovery runs, including generated drafts,
+            skipped duplicates, and failures.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {runs.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No automation runs yet. Run discovery above to create the first log.
+            </p>
+          ) : (
+            runs.map((run) => (
+              <section key={run.id} className="rounded-lg border p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="font-semibold">{run.category}</h2>
+                      <RunStatusBadge status={run.status} />
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {run.country} · max {run.maxItems} · started {formatDate(run.startedAt)}
+                    </p>
+                    {run.summary ? (
+                      <p className="mt-2 text-sm">{run.summary}</p>
+                    ) : null}
+                    {run.error ? (
+                      <p className="mt-2 text-sm text-destructive">{run.error}</p>
+                    ) : null}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {run.finishedAt ? "Finished" : "Running"}
+                  </span>
+                </div>
+
+                {run.items.length > 0 ? (
+                  <ul className="mt-4 divide-y text-sm">
+                    {run.items.map((item) => (
+                      <li key={item.id} className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="font-medium">{item.productName}</p>
+                          {item.message ? (
+                            <p className="text-muted-foreground">{item.message}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <ItemStatusBadge status={item.status} />
+                          {item.postSlug ? (
+                            <Link
+                              href={`/dashboard/posts?search=${encodeURIComponent(item.postSlug)}`}
+                              className="text-xs font-medium text-primary underline"
+                            >
+                              Draft
+                            </Link>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </section>
+            ))
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function RunStatusBadge({ status }: { status: string }) {
+  return (
+    <Badge
+      variant={status === "success" ? "default" : "outline"}
+      className={cn(
+        status === "failed" && "border-destructive/50 text-destructive",
+        status === "partial" && "border-amber-500/50 text-amber-700 dark:text-amber-300",
+      )}
+    >
+      {status}
+    </Badge>
+  );
+}
+
+function ItemStatusBadge({ status }: { status: string }) {
+  return (
+    <Badge
+      variant={status === "generated" ? "default" : "secondary"}
+      className={cn(status === "failed" && "border-destructive/50 text-destructive")}
+    >
+      {status}
+    </Badge>
+  );
+}

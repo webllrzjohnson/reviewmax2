@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   boolean,
+  integer,
   jsonb,
   numeric,
   pgEnum,
@@ -11,6 +12,20 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const userRoleEnum = pgEnum("user_role", ["admin", "user"]);
+export const automationRunStatusEnum = pgEnum("automation_run_status", [
+  "running",
+  "success",
+  "failed",
+  "partial",
+]);
+export const automationRunTypeEnum = pgEnum("automation_run_type", [
+  "product_discovery",
+]);
+export const automationRunItemStatusEnum = pgEnum("automation_run_item_status", [
+  "generated",
+  "skipped",
+  "failed",
+]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -103,6 +118,40 @@ export const reviewRequests = pgTable("review_requests", {
     .defaultNow(),
 });
 
+export const automationRuns = pgTable("automation_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  type: automationRunTypeEnum("type").notNull(),
+  status: automationRunStatusEnum("status").notNull().default("running"),
+  category: text("category").notNull(),
+  country: text("country").notNull(),
+  maxItems: integer("max_items").notNull().default(3),
+  summary: text("summary"),
+  error: text("error"),
+  metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+  startedBy: uuid("started_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  startedAt: timestamp("started_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true, mode: "string" }),
+});
+
+export const automationRunItems = pgTable("automation_run_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id")
+    .notNull()
+    .references(() => automationRuns.id, { onDelete: "cascade" }),
+  productName: text("product_name").notNull(),
+  amazonUrl: text("amazon_url"),
+  status: automationRunItemStatusEnum("status").notNull(),
+  postSlug: text("post_slug"),
+  message: text("message"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .defaultNow(),
+});
+
 export const categoriesRelations = relations(categories, ({ many }) => ({
   posts: many(posts),
 }));
@@ -116,11 +165,27 @@ export const postsRelations = relations(posts, ({ one }) => ({
 
 export const usersRelations = relations(users, ({ many }) => ({
   reviewRequests: many(reviewRequests),
+  automationRuns: many(automationRuns),
 }));
 
 export const reviewRequestsRelations = relations(reviewRequests, ({ one }) => ({
   creator: one(users, {
     fields: [reviewRequests.createdBy],
     references: [users.id],
+  }),
+}));
+
+export const automationRunsRelations = relations(automationRuns, ({ many, one }) => ({
+  items: many(automationRunItems),
+  starter: one(users, {
+    fields: [automationRuns.startedBy],
+    references: [users.id],
+  }),
+}));
+
+export const automationRunItemsRelations = relations(automationRunItems, ({ one }) => ({
+  run: one(automationRuns, {
+    fields: [automationRunItems.runId],
+    references: [automationRuns.id],
   }),
 }));

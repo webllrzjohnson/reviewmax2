@@ -5,6 +5,7 @@ import {
   discoverAndEnqueueAction,
   type DiscoverActionState,
 } from "@/actions/discover-products";
+import { AUTOMATION_MAX_ITEMS_PER_RUN } from "@/lib/automation";
 import { DISCOVERY_COUNTRIES } from "@/lib/countries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ import {
 export function DiscoverForm() {
   const [category, setCategory] = useState("");
   const [country, setCountry] = useState("United States");
+  const [maxItems, setMaxItems] = useState(3);
   const [submitting, setSubmitting] = useState(false);
   const [state, setState] = useState<DiscoverActionState | null>(null);
 
@@ -28,7 +30,7 @@ export function DiscoverForm() {
     setSubmitting(true);
     setState(null);
     try {
-      const result = await discoverAndEnqueueAction({ category, country });
+      const result = await discoverAndEnqueueAction({ category, country, maxItems });
       setState(result);
     } catch {
       setState({
@@ -47,8 +49,8 @@ export function DiscoverForm() {
           <CardTitle>Discover products</CardTitle>
           <CardDescription>
             Searches Amazon for a category (via SerpApi), skips products already
-            reviewed, and generates a draft review for each new one. Requires{" "}
-            <code>SERPAPI_KEY</code> and an AI key.
+            reviewed, generates draft reviews, and records an automation run.
+            Requires <code>SERPAPI_KEY</code> and an AI key.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -78,6 +80,21 @@ export function DiscoverForm() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="maxItems">Max drafts this run</Label>
+              <Input
+                id="maxItems"
+                type="number"
+                min={1}
+                max={AUTOMATION_MAX_ITEMS_PER_RUN}
+                value={maxItems}
+                onChange={(e) => setMaxItems(Number(e.target.value))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Safe limit: {AUTOMATION_MAX_ITEMS_PER_RUN} drafts per run.
+              </p>
             </div>
 
             <Button type="submit" disabled={submitting || !category.trim()}>
@@ -120,8 +137,8 @@ export function DiscoverForm() {
                     <span
                       className={
                         r.ok
-                          ? "text-emerald-600 dark:text-emerald-400 whitespace-nowrap"
-                          : "text-destructive whitespace-nowrap"
+                          ? "whitespace-nowrap text-emerald-600 dark:text-emerald-400"
+                          : "whitespace-nowrap text-destructive"
                       }
                     >
                       {r.ok ? "Generated" : "Failed"}

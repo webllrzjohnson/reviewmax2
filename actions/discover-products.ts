@@ -3,16 +3,22 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { reviewRequests } from "@/lib/db/schema";
+import { automationRunItems, automationRuns, reviewRequests } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
 import { generateAndInsertReview } from "@/actions/generate-review";
+import {
+  buildAutomationSummary,
+  getAutomationRunStatus,
+  normalizeAutomationMaxItems,
+  normalizeAutomationSearchTerm,
+  type AutomationItemStatus,
+} from "@/lib/automation";
 import {
   discoverProducts,
   filterExistingByAsin,
 } from "@/lib/product-discovery";
 
-/** Max drafts generated per discovery run to avoid server action timeouts. */
-const MAX_GENERATE_PER_RUN = 3;
+const DEFAULT_GENERATE_PER_RUN = 3;
 
 export type DiscoverItemResult = {
   name: string;
@@ -28,14 +34,56 @@ export type DiscoverActionState = {
   skipped?: number;
 };
 
+type AutomationItemDraft = {
+  productName: string;
+  amazonUrl?: string | null;
+  status: AutomationItemStatus;
+  postSlug?: string | null;
+  message?: string | null;
+};
+
+async function finishAutomationRun(params: {
+  runId: string;
+  items: AutomationItemDraft[];
+  error?: string | null;
+}) {
+  if (params.items.length > 0) {
+    await db.insert(automationRunItems).values(
+      params.items.map((item) => ({
+        runId: params.runId,
+        productName: item.productName,
+        amazonUrl: item.amazonUrl ?? null,
+        status: item.status,
+        postSlug: item.postSlug ?? null,
+        message: item.message ?? null,
+      })),
+    );
+  }
+
+  const status = params.error
+    ? "failed"
+    : getAutomationRunStatus(params.items.map((item) => ({ status: item.status })));
+
+  await db
+    .update(automationRuns)
+    .set({
+      status,
+      summary: buildAutomationSummary(params.items.map((item) => ({ status: item.status }))),
+      error: params.error ?? null,
+      finishedAt: new Date().toISOString(),
+    })
+    .where(eq(automationRuns.id, params.runId));
+}
+
 /**
  * Searches a category on Amazon (SerpApi), drops products already reviewed,
  * then generates + saves a draft review for each new product. Mirrors the
- * "Verdict Flow" discovery workflow.
+ * "Verdict Flow" discovery workflow and records an observable automation run.
  */
 export async function discoverAndEnqueueAction(input: {
   category: string;
   country: string;
+  maxItems?: number;
 }): Promise<DiscoverActionState> {
   let session;
   try {
@@ -44,23 +92,58 @@ export async function discoverAndEnqueueAction(input: {
     return { ok: false, message: "Your session expired. Sign in again." };
   }
 
-  const category = input.category?.trim();
+  const category = normalizeAutomationSearchTerm(input.category ?? "");
   const country = input.country?.trim() || "United States";
-  if (!category) {
+  const maxItems = normalizeAutomationMaxItems(
+    input.maxItems ?? DEFAULT_GENERATE_PER_RUN,
+  );
+
+  if (!category.label) {
     return { ok: false, message: "Enter a category to search." };
   }
 
-  const discovered = await discoverProducts(category, country);
+  const [run] = await db
+    .insert(automationRuns)
+    .values({
+      type: "product_discovery",
+      category: category.slug,
+      country,
+      maxItems,
+      startedBy: session.user.id,
+      metadata: { label: category.label },
+    })
+    .returning({ id: automationRuns.id });
+
+  if (!run) {
+    return { ok: false, message: "Could not start automation run." };
+  }
+
+  const items: AutomationItemDraft[] = [];
+  const discovered = await discoverProducts(category.label, country);
   if (!discovered.ok) {
+    await finishAutomationRun({
+      runId: run.id,
+      items,
+      error: discovered.message,
+    });
     return { ok: false, message: discovered.message };
   }
 
   const fresh = await filterExistingByAsin(discovered.products);
   const skipped = discovered.products.length - fresh.length;
-  const batch = fresh.slice(0, MAX_GENERATE_PER_RUN);
+  const batch = fresh.slice(0, maxItems);
   const deferred = fresh.length - batch.length;
 
+  if (skipped > 0) {
+    items.push({
+      productName: `${skipped} duplicate product${skipped === 1 ? "" : "s"}`,
+      status: "skipped",
+      message: "Already reviewed by ASIN.",
+    });
+  }
+
   if (batch.length === 0) {
+    await finishAutomationRun({ runId: run.id, items });
     return {
       ok: true,
       skipped,
@@ -122,9 +205,27 @@ export async function discoverAndEnqueueAction(input: {
       slug: generated.slug,
       message: generated.message,
     });
+    items.push({
+      productName: product.name,
+      amazonUrl: product.amazon_url,
+      status: generated.ok ? "generated" : "failed",
+      postSlug: generated.slug,
+      message: generated.message,
+    });
   }
 
+  if (deferred > 0) {
+    items.push({
+      productName: `${deferred} deferred product${deferred === 1 ? "" : "s"}`,
+      status: "skipped",
+      message: "Run again to process the next safe batch.",
+    });
+  }
+
+  await finishAutomationRun({ runId: run.id, items });
+
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/automation");
   revalidatePath("/dashboard/posts");
   revalidatePath("/dashboard/review-requests");
 

@@ -48,6 +48,9 @@ export default async function DashboardPage() {
           <Button asChild variant="outline">
             <Link href="/dashboard/newsletter">Newsletter</Link>
           </Button>
+          <Button asChild variant="outline">
+            <Link href="/dashboard/automation">Automation</Link>
+          </Button>
         </div>
       </div>
 

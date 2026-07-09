@@ -47,6 +47,12 @@ export default function AdminDashboardShellLayout({
               Discover
             </Link>
             <Link
+              href="/dashboard/automation"
+              className="text-primary hover:underline"
+            >
+              Automation
+            </Link>
+            <Link
               href="/"
               className="text-muted-foreground hover:text-foreground"
             >
