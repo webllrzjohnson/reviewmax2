@@ -84,12 +84,15 @@ export async function discoverAndEnqueueAction(input: {
   category: string;
   country: string;
   maxItems?: number;
+  source?: "admin" | "cron";
 }): Promise<DiscoverActionState> {
-  let session;
-  try {
-    session = await requireAdmin();
-  } catch {
-    return { ok: false, message: "Your session expired. Sign in again." };
+  let session: Awaited<ReturnType<typeof requireAdmin>> | null = null;
+  if (input.source !== "cron") {
+    try {
+      session = await requireAdmin();
+    } catch {
+      return { ok: false, message: "Your session expired. Sign in again." };
+    }
   }
 
   const category = normalizeAutomationSearchTerm(input.category ?? "");
@@ -109,8 +112,8 @@ export async function discoverAndEnqueueAction(input: {
       category: category.slug,
       country,
       maxItems,
-      startedBy: session.user.id,
-      metadata: { label: category.label },
+      startedBy: session?.user.id ?? null,
+      metadata: { label: category.label, source: input.source ?? "admin" },
     })
     .returning({ id: automationRuns.id });
 
@@ -164,7 +167,7 @@ export async function discoverAndEnqueueAction(input: {
           categorySlug: product.category,
           amazonUrl: product.amazon_url,
           notes: null,
-          createdBy: session.user.id,
+          createdBy: session?.user.id ?? null,
         })
         .returning({ id: reviewRequests.id });
       requestId = inserted?.id ?? null;
@@ -188,7 +191,7 @@ export async function discoverAndEnqueueAction(input: {
             generated.ok
               ? {
                   processedAt: new Date().toISOString(),
-                  processedBy: session.user.id,
+                  processedBy: session?.user.id ?? null,
                   processError: null,
                 }
               : { processError: generated.message ?? "Generation failed." },
