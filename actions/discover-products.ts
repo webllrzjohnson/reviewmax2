@@ -181,6 +181,7 @@ export async function discoverAndEnqueueAction(input: {
       amazon_url: product.amazon_url,
       notes: null,
       image_url: product.image_url,
+      trusted: input.source === "cron",
     });
 
     if (requestId) {

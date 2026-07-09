@@ -39,8 +39,11 @@ export async function generateAndInsertReview(params: {
   amazon_url: string;
   notes: string | null;
   image_url?: string | null;
+  trusted?: boolean;
 }): Promise<GenerateReviewActionResult> {
-  await requireAdmin();
+  if (!params.trusted) {
+    await requireAdmin();
+  }
 
   const generated = await generateReviewDraft(params);
   if (!generated.ok) {
