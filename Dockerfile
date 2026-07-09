@@ -34,6 +34,9 @@ RUN addgroup --system --gid 1001 nodejs && \
     
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/drizzle ./drizzle
+COPY --from=builder /app/scripts/migrate.mjs ./scripts/migrate.mjs
 # nextjs user must write image optimization cache at runtime
 RUN mkdir -p .next/cache && chown -R nextjs:nodejs /app
 

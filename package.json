@@ -11,7 +11,7 @@
     "start": "next start -H 0.0.0.0",
     "lint": "next lint",
     "test": "node --import tsx --test tests/**/*.test.ts",
-    "db:migrate": "tsx scripts/migrate.ts",
+    "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
     "db:create": "tsx --env-file=.env.local scripts/setup-local-db.ts",
     "db:setup": "npm run db:create && npm run db:migrate && npm run db:seed",
