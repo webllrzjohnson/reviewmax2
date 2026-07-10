@@ -3,9 +3,11 @@ export const AUTOMATION_MAX_ITEMS_PER_RUN = 6;
 export const AUTOMATION_RUN_TYPES = ["product_discovery"] as const;
 export const AUTOMATION_RUN_STATUSES = ["running", "success", "failed", "partial"] as const;
 export const AUTOMATION_ITEM_STATUSES = ["generated", "skipped", "failed"] as const;
+export const AUTOMATION_STALE_RUN_MINUTES = 15;
 
 export type AutomationRunType = (typeof AUTOMATION_RUN_TYPES)[number];
 export type AutomationRunStatus = (typeof AUTOMATION_RUN_STATUSES)[number];
+export type AutomationDisplayStatus = AutomationRunStatus | "stale";
 export type AutomationItemStatus = (typeof AUTOMATION_ITEM_STATUSES)[number];
 
 export type AutomationSummaryItem = { status: AutomationItemStatus };
@@ -50,4 +52,21 @@ export function getAutomationRunStatus(items: AutomationSummaryItem[]): Automati
   const failed = items.some((item) => item.status === "failed");
   const generated = items.some((item) => item.status === "generated");
   return failed && generated ? "partial" : failed ? "failed" : "success";
+}
+
+export function getAutomationDisplayStatus(
+  run: {
+    status: AutomationRunStatus;
+    startedAt: string | Date;
+    finishedAt: string | Date | null;
+  },
+  now = new Date(),
+): AutomationDisplayStatus {
+  if (run.status !== "running" || run.finishedAt) return run.status;
+
+  const startedAt = new Date(run.startedAt).getTime();
+  if (!Number.isFinite(startedAt)) return run.status;
+
+  const staleAfterMs = AUTOMATION_STALE_RUN_MINUTES * 60 * 1000;
+  return now.getTime() - startedAt >= staleAfterMs ? "stale" : "running";
 }

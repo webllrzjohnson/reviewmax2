@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   AUTOMATION_MAX_ITEMS_PER_RUN,
   buildAutomationSummary,
+  getAutomationDisplayStatus,
   normalizeAutomationMaxItems,
   normalizeAutomationSearchTerm,
 } from "@/lib/automation";
@@ -30,6 +31,44 @@ describe("automation helpers", () => {
         { status: "generated" },
       ]),
       "Generated 2 drafts, skipped 1 duplicate, failed 1 item.",
+    );
+  });
+
+  it("labels old unfinished runs as stale for the dashboard", () => {
+    const now = new Date("2026-07-10T12:00:00.000Z");
+
+    assert.equal(
+      getAutomationDisplayStatus(
+        {
+          status: "running",
+          startedAt: "2026-07-10T11:30:00.000Z",
+          finishedAt: null,
+        },
+        now,
+      ),
+      "stale",
+    );
+    assert.equal(
+      getAutomationDisplayStatus(
+        {
+          status: "running",
+          startedAt: "2026-07-10T11:55:00.000Z",
+          finishedAt: null,
+        },
+        now,
+      ),
+      "running",
+    );
+    assert.equal(
+      getAutomationDisplayStatus(
+        {
+          status: "success",
+          startedAt: "2026-07-10T11:30:00.000Z",
+          finishedAt: "2026-07-10T11:31:00.000Z",
+        },
+        now,
+      ),
+      "success",
     );
   });
 });

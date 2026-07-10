@@ -3,10 +3,12 @@ import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/session";
 import { automationRunItems, automationRuns } from "@/lib/db/schema";
 import type {
+  AutomationDisplayStatus,
   AutomationItemStatus,
   AutomationRunStatus,
   AutomationRunType,
 } from "@/lib/automation";
+import { getAutomationDisplayStatus } from "@/lib/automation";
 
 export type AutomationRunItemView = {
   id: string;
@@ -22,6 +24,7 @@ export type AutomationRunView = {
   id: string;
   type: AutomationRunType;
   status: AutomationRunStatus;
+  displayStatus: AutomationDisplayStatus;
   category: string;
   country: string;
   maxItems: number;
@@ -53,6 +56,7 @@ export async function getRecentAutomationRuns(limit = 10): Promise<AutomationRun
         id: run.id,
         type: run.type,
         status: run.status,
+        displayStatus: getAutomationDisplayStatus(run),
         category: run.category,
         country: run.country,
         maxItems: run.maxItems,

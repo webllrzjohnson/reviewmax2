@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { markStaleAutomationRunsFailedAction } from "@/actions/automation-runs";
 import { DiscoverForm } from "@/components/admin/DiscoverForm";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -15,17 +17,27 @@ export const dynamic = "force-dynamic";
 
 export default async function AutomationPage() {
   const runs = await getRecentAutomationRuns(10);
+  const hasStaleRuns = runs.some((run) => run.displayStatus === "stale");
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-          Automation
-        </h1>
-        <p className="mt-1 text-muted-foreground">
-          Run product discovery manually, review generated drafts, and inspect the
-          latest automation history before enabling scheduled cron.
-        </p>
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+            Automation
+          </h1>
+          <p className="mt-1 text-muted-foreground">
+            Run product discovery manually, review generated drafts, and inspect the
+            latest automation history before enabling scheduled cron.
+          </p>
+        </div>
+        {hasStaleRuns ? (
+          <form action={markStaleAutomationRunsFailedAction}>
+            <Button variant="outline" type="submit">
+              Mark stale runs failed
+            </Button>
+          </form>
+        ) : null}
       </div>
 
       <DiscoverForm />
@@ -50,7 +62,7 @@ export default async function AutomationPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="font-semibold">{run.category}</h2>
-                      <RunStatusBadge status={run.status} />
+                      <RunStatusBadge status={run.displayStatus} />
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {run.country} · max {run.maxItems} · started {formatDate(run.startedAt)}
@@ -58,12 +70,17 @@ export default async function AutomationPage() {
                     {run.summary ? (
                       <p className="mt-2 text-sm">{run.summary}</p>
                     ) : null}
+                    {run.displayStatus === "stale" ? (
+                      <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
+                        This run has been running for more than 15 minutes. It likely failed before it could update its status.
+                      </p>
+                    ) : null}
                     {run.error ? (
                       <p className="mt-2 text-sm text-destructive">{run.error}</p>
                     ) : null}
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    {run.finishedAt ? "Finished" : "Running"}
+                    {run.finishedAt ? "Finished" : run.displayStatus === "stale" ? "Stale" : "Running"}
                   </span>
                 </div>
 
@@ -108,6 +125,7 @@ function RunStatusBadge({ status }: { status: string }) {
       className={cn(
         status === "failed" && "border-destructive/50 text-destructive",
         status === "partial" && "border-amber-500/50 text-amber-700 dark:text-amber-300",
+        status === "stale" && "border-amber-500/50 text-amber-700 dark:text-amber-300",
       )}
     >
       {status}
