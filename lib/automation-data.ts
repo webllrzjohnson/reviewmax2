@@ -1,7 +1,7 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, gte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/session";
-import { automationRunItems, automationRuns } from "@/lib/db/schema";
+import { automationRunItems, automationRuns, automationSettings } from "@/lib/db/schema";
 import type {
   AutomationDisplayStatus,
   AutomationItemStatus,
@@ -9,6 +9,12 @@ import type {
   AutomationRunType,
 } from "@/lib/automation";
 import { getAutomationDisplayStatus } from "@/lib/automation";
+import {
+  AUTOMATION_SETTINGS_ID,
+  buildMonthlyAutomationSummary,
+  mergeAutomationSettingsWithEnv,
+  type AutomationSettingsConfig,
+} from "@/lib/automation-settings";
 
 export type AutomationRunItemView = {
   id: string;
@@ -76,4 +82,46 @@ export async function getRecentAutomationRuns(limit = 10): Promise<AutomationRun
       };
     }),
   );
+}
+
+export async function getAutomationSettingsForDashboard(): Promise<AutomationSettingsConfig> {
+  await requireAdmin();
+  return getAutomationSettingsConfig();
+}
+
+export async function getAutomationSettingsConfig(): Promise<AutomationSettingsConfig> {
+  const [settings] = await db
+    .select()
+    .from(automationSettings)
+    .where(eq(automationSettings.id, AUTOMATION_SETTINGS_ID))
+    .limit(1);
+
+  return mergeAutomationSettingsWithEnv(
+    settings
+      ? {
+          enabled: settings.enabled,
+          categories: settings.categories,
+          country: settings.country,
+          notificationEmail: settings.notificationEmail,
+          notifyOnRun: settings.notifyOnRun,
+          monthlySummaryEnabled: settings.monthlySummaryEnabled,
+        }
+      : null,
+    process.env,
+  );
+}
+
+export async function getMonthlyAutomationSummaryForDashboard() {
+  await requireAdmin();
+  return getMonthlyAutomationSummary();
+}
+
+export async function getMonthlyAutomationSummary(now = new Date()) {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const runs = await db
+    .select({ status: automationRuns.status, summary: automationRuns.summary })
+    .from(automationRuns)
+    .where(gte(automationRuns.startedAt, start.toISOString()));
+
+  return buildMonthlyAutomationSummary(runs);
 }

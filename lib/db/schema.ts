@@ -152,6 +152,19 @@ export const automationRunItems = pgTable("automation_run_items", {
     .defaultNow(),
 });
 
+export const automationSettings = pgTable("automation_settings", {
+  id: text("id").primaryKey().default("default"),
+  enabled: boolean("enabled").notNull().default(true),
+  categories: text("categories").array().notNull().default(sql`'{}'::text[]`),
+  country: text("country").notNull().default("United States"),
+  notificationEmail: text("notification_email"),
+  notifyOnRun: boolean("notify_on_run").notNull().default(false),
+  monthlySummaryEnabled: boolean("monthly_summary_enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .defaultNow(),
+});
+
 export const categoriesRelations = relations(categories, ({ many }) => ({
   posts: many(posts),
 }));

@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { discoverAndEnqueueAction } from "@/actions/discover-products";
+import { getAutomationSettingsConfig } from "@/lib/automation-data";
+import {
+  buildAutomationRunEmailHtml,
+} from "@/lib/automation-settings";
 import {
   isCronAuthorized,
-  parseAutomationCronConfig,
   pickCronDiscoveryCategory,
 } from "@/lib/automation-cron";
+import { getResendClient, resendFromAddress } from "@/lib/resend";
+import { siteUrl } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -13,14 +18,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, message: "Unauthorized" }, { status: 401 });
   }
 
-  const config = parseAutomationCronConfig(process.env);
+  const config = await getAutomationSettingsConfig();
+  if (!config.enabled) {
+    return NextResponse.json({ ok: true, skipped: true, message: "Automation is paused." });
+  }
+
   const category = pickCronDiscoveryCategory(config.categories);
 
   if (!category) {
     return NextResponse.json(
       {
         ok: false,
-        message: "AUTOMATION_DISCOVERY_CATEGORIES is not configured.",
+        message: "No automation categories are configured.",
       },
       { status: 400 },
     );
@@ -32,6 +41,27 @@ export async function POST(request: Request) {
     maxItems: config.maxItems,
     source: "cron",
   });
+
+  if (config.notifyOnRun && config.notificationEmail) {
+    const resend = getResendClient();
+    if (resend) {
+      await resend.emails
+        .send({
+          from: resendFromAddress(),
+          to: config.notificationEmail,
+          subject: `Verdict automation ${result.ok ? "completed" : "failed"} — ${category}`,
+          html: buildAutomationRunEmailHtml({
+            category,
+            country: config.country,
+            status: result.ok ? "completed" : "failed",
+            message: result.message,
+            results: result.results,
+            dashboardUrl: `${siteUrl()}/dashboard/automation`,
+          }),
+        })
+        .catch((error) => console.error("automation notification failed", error));
+    }
+  }
 
   return NextResponse.json({
     ok: result.ok,

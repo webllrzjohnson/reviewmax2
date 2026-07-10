@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { markStaleAutomationRunsFailedAction } from "@/actions/automation-runs";
+import {
+  markStaleAutomationRunsFailedAction,
+  sendMonthlyAutomationSummaryAction,
+} from "@/actions/automation-runs";
+import { AutomationSettingsForm } from "@/components/admin/AutomationSettingsForm";
 import { DiscoverForm } from "@/components/admin/DiscoverForm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,13 +14,21 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getRecentAutomationRuns } from "@/lib/automation-data";
+import {
+  getAutomationSettingsForDashboard,
+  getMonthlyAutomationSummaryForDashboard,
+  getRecentAutomationRuns,
+} from "@/lib/automation-data";
 import { cn, formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function AutomationPage() {
-  const runs = await getRecentAutomationRuns(10);
+  const [runs, settings, monthlySummary] = await Promise.all([
+    getRecentAutomationRuns(10),
+    getAutomationSettingsForDashboard(),
+    getMonthlyAutomationSummaryForDashboard(),
+  ]);
   const hasStaleRuns = runs.some((run) => run.displayStatus === "stale");
 
   return (
@@ -27,8 +39,8 @@ export default async function AutomationPage() {
             Automation
           </h1>
           <p className="mt-1 text-muted-foreground">
-            Run product discovery manually, review generated drafts, and inspect the
-            latest automation history before enabling scheduled cron.
+            Run product discovery manually, review generated drafts, and inspect
+            scheduled automation history.
           </p>
         </div>
         {hasStaleRuns ? (
@@ -40,7 +52,49 @@ export default async function AutomationPage() {
         ) : null}
       </div>
 
-      <DiscoverForm />
+      <Card>
+        <CardHeader>
+          <CardTitle>Scheduled automation settings</CardTitle>
+          <CardDescription>
+            Control whether scheduled discovery runs, which categories it rotates
+            through, and where notifications go.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AutomationSettingsForm settings={settings} />
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
+        <DiscoverForm />
+        <Card>
+          <CardHeader>
+            <CardTitle>This month</CardTitle>
+            <CardDescription>
+              Automation performance for the current UTC month.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <dl className="grid grid-cols-2 gap-3">
+              <Metric label="Runs" value={monthlySummary.runs} />
+              <Metric label="Drafts" value={monthlySummary.generated} />
+              <Metric label="Skipped" value={monthlySummary.skipped} />
+              <Metric label="Failed items" value={monthlySummary.failedItems} />
+            </dl>
+            {settings.monthlySummaryEnabled ? (
+              <form action={sendMonthlyAutomationSummaryAction}>
+                <Button variant="outline" type="submit">
+                  Send monthly summary now
+                </Button>
+              </form>
+            ) : (
+              <p className="text-muted-foreground">
+                Enable monthly summary above to send this by email.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>
@@ -72,7 +126,8 @@ export default async function AutomationPage() {
                     ) : null}
                     {run.displayStatus === "stale" ? (
                       <p className="mt-2 text-sm text-amber-700 dark:text-amber-300">
-                        This run has been running for more than 15 minutes. It likely failed before it could update its status.
+                        This run has been running for more than 15 minutes. It
+                        likely failed before it could update its status.
                       </p>
                     ) : null}
                     {run.error ? (
@@ -141,5 +196,14 @@ function ItemStatusBadge({ status }: { status: string }) {
     >
       {status}
     </Badge>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border p-3">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-xl font-semibold">{value}</dd>
+    </div>
   );
 }
