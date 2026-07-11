@@ -88,10 +88,13 @@ export async function updateAutomationSettingsAction(
   return { ok: true, message: "Automation settings saved." };
 }
 
-export async function sendMonthlyAutomationSummaryAction(): Promise<void> {
+export async function sendMonthlyAutomationSummaryAction(
+  _prev?: AutomationSettingsState,
+): Promise<AutomationSettingsState> {
   await requireAdmin();
-  await sendMonthlyAutomationSummaryEmail();
+  const result = await sendMonthlyAutomationSummaryEmail();
   revalidatePath("/dashboard/automation");
+  return result;
 }
 
 export async function sendMonthlyAutomationSummaryEmail(): Promise<AutomationSettingsState> {

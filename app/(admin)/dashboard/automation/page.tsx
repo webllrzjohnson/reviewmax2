@@ -1,10 +1,10 @@
 import Link from "next/link";
 import {
   markStaleAutomationRunsFailedAction,
-  sendMonthlyAutomationSummaryAction,
 } from "@/actions/automation-runs";
 import { AutomationSettingsForm } from "@/components/admin/AutomationSettingsForm";
 import { DiscoverForm } from "@/components/admin/DiscoverForm";
+import { MonthlySummaryButton } from "@/components/admin/MonthlySummaryButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,11 +82,7 @@ export default async function AutomationPage() {
               <Metric label="Failed items" value={monthlySummary.failedItems} />
             </dl>
             {settings.monthlySummaryEnabled ? (
-              <form action={sendMonthlyAutomationSummaryAction}>
-                <Button variant="outline" type="submit">
-                  Send monthly summary now
-                </Button>
-              </form>
+              <MonthlySummaryButton />
             ) : (
               <p className="text-muted-foreground">
                 Enable monthly summary above to send this by email.
