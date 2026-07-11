@@ -6,7 +6,7 @@ import {
 } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
 import { parseJsonLoose } from "@/lib/parse-json";
-import { buildReviewGenerationPrompt } from "@/lib/ai-settings";
+import { buildReviewGenerationPrompt, type AiGenerationSettingsConfig } from "@/lib/ai-settings";
 
 /** Shape the model is asked to return; validated before we trust any field. */
 export const GeneratedReviewSchema = z.object({
@@ -97,7 +97,8 @@ export async function generateReviewDraft(params: {
   amazon_url: string;
   notes: string | null;
   image_url?: string | null;
-}): Promise<GenerateReviewResult> {
+  skip_image_resolution?: boolean;
+}, settingsOverride?: AiGenerationSettingsConfig): Promise<GenerateReviewResult> {
   const hasClaude = Boolean(process.env.ANTHROPIC_API_KEY);
   const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
 
@@ -110,8 +111,7 @@ export async function generateReviewDraft(params: {
   }
 
   const amazonUrl = await expandAmazonProductUrl(params.amazon_url);
-  const { getAiGenerationSettingsConfig } = await import("@/lib/ai-settings-data");
-  const aiSettings = await getAiGenerationSettingsConfig();
+  const aiSettings = settingsOverride ?? await getAiGenerationSettingsConfigLazy();
 
   const slugBase = params.product_name
     .toLowerCase()
@@ -178,7 +178,9 @@ export async function generateReviewDraft(params: {
     const passthroughImage = coerceProductImageUrl(params.image_url);
     const imageUrl =
       passthroughImage ??
-      (await resolveAmazonProductImageUrlWithRetry(amazonUrl));
+      (params.skip_image_resolution
+        ? null
+        : await resolveAmazonProductImageUrlWithRetry(amazonUrl));
 
     const faqs = review.faqs
       .map((f) => ({ q: f.q.trim(), a: f.a.trim() }))
@@ -220,6 +222,11 @@ export async function generateReviewDraft(params: {
         ? `AI generation failed (Claude and fallback). ${lastError}`
         : lastError,
   };
+}
+
+async function getAiGenerationSettingsConfigLazy() {
+  const { getAiGenerationSettingsConfig } = await import("@/lib/ai-settings-data");
+  return getAiGenerationSettingsConfig();
 }
 
 async function callClaude(system: string, user: string, model: string): Promise<string> {
