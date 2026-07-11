@@ -26,9 +26,40 @@ import {
 import { toast } from "sonner";
 import { MarkdownEditorField } from "@/components/admin/MarkdownEditorField";
 import { AiAssistPanel } from "@/components/admin/AiAssistPanel";
+import { buildPublishChecklist } from "@/lib/post-quality";
 
 function linesFromArray(items: string[]): string {
   return items.join("\n");
+}
+
+function linesToArray(value: string | undefined): string[] {
+  return (value ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function specsFromText(value: string | undefined): Record<string, string> {
+  const specs: Record<string, string> = {};
+  for (const line of linesToArray(value)) {
+    const idx = line.indexOf(":");
+    if (idx < 1) continue;
+    const key = line.slice(0, idx).trim();
+    const val = line.slice(idx + 1).trim();
+    if (key && val) specs[key] = val;
+  }
+  return specs;
+}
+
+function faqsFromText(value: string | undefined): Array<{ q: string; a: string }> {
+  const lines = linesToArray(value);
+  const faqs: Array<{ q: string; a: string }> = [];
+  for (let i = 0; i < lines.length - 1; i += 2) {
+    const q = lines[i].replace(/^Q:\s*/i, "").trim();
+    const a = lines[i + 1].replace(/^A:\s*/i, "").trim();
+    if (q && a) faqs.push({ q, a });
+  }
+  return faqs;
 }
 
 function postToFormValues(post: PostWithCategory): PostEditorInput {
@@ -102,7 +133,23 @@ export function PostEditorForm({
   } = form;
 
   const title = watch("title");
+  const currentValues = watch();
   const [slugTouched, setSlugTouched] = useState(isEdit);
+  const publishChecklist = buildPublishChecklist({
+    title: currentValues.title,
+    excerpt: currentValues.excerpt,
+    body: currentValues.body ?? "",
+    categoryId: currentValues.category_id,
+    rating: currentValues.rating,
+    pros: linesToArray(currentValues.pros),
+    cons: linesToArray(currentValues.cons),
+    verdict: currentValues.verdict,
+    amazonUrl: currentValues.amazon_url,
+    imageUrl: currentValues.image_url,
+    faqs: faqsFromText(currentValues.faqs),
+    specs: specsFromText(currentValues.specs),
+  });
+  const blockingIssues = publishChecklist.filter((item) => item.blocking && !item.ok);
 
   async function onSubmit(values: PostEditorInput) {
     const result = isEdit && post
@@ -350,6 +397,33 @@ export function PostEditorForm({
               <Label htmlFor="is_published" className="font-normal">
                 Published (visible on the blog)
               </Label>
+            </div>
+
+            <div className="space-y-3 rounded-lg border bg-muted/30 p-4 sm:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold">Publishing quality checklist</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Use this before publishing generated drafts. Blocking items prevent publishing.
+                  </p>
+                </div>
+                <span className={blockingIssues.length ? "text-xs font-medium text-amber-700 dark:text-amber-300" : "text-xs font-medium text-emerald-600"}>
+                  {blockingIssues.length ? `${blockingIssues.length} blocking issue${blockingIssues.length === 1 ? "" : "s"}` : "Ready to publish"}
+                </span>
+              </div>
+              <ul className="grid gap-2 md:grid-cols-2">
+                {publishChecklist.map((item) => (
+                  <li key={item.id} className="flex gap-2 rounded-md bg-background/70 p-2 text-sm">
+                    <span aria-hidden className={item.ok ? "text-emerald-600" : item.blocking ? "text-destructive" : "text-amber-600"}>
+                      {item.ok ? "✓" : item.blocking ? "!" : "•"}
+                    </span>
+                    <span>
+                      <span className="font-medium">{item.label}</span>
+                      <span className="block text-xs text-muted-foreground">{item.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
 

@@ -9,7 +9,7 @@ import { getDbErrorCode } from "@/lib/db-errors";
 import { expandAmazonProductUrl, resolveAmazonProductImageUrlWithRetry } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
 import { maybePostReviewToPinterest } from "@/lib/pinterest";
-import { checkPublishQuality } from "@/lib/post-quality";
+import { checkPublishQuality, firstBlockingChecklistIssue } from "@/lib/post-quality";
 import { PostEditorSchema, type PostEditorInput } from "@/lib/validations";
 
 export type PostActionState = { ok: boolean; message?: string; id?: string };
@@ -373,8 +373,17 @@ export async function createPost(
     const values = await preparePostValues(parsed.data);
 
     if (values.isPublished) {
-      const issue = checkPublishQuality({
+      const issue = firstBlockingChecklistIssue({
+        title: values.title,
+        excerpt: values.excerpt,
         body: values.body,
+        categoryId: values.categoryId,
+        rating: values.rating,
+        pros: values.pros,
+        cons: values.cons,
+        verdict: values.verdict,
+        amazonUrl: values.amazonUrl,
+        imageUrl: values.imageUrl,
         faqs: values.faqs,
         specs: values.specs,
       });
@@ -450,8 +459,17 @@ export async function updatePost(
     const values = await preparePostValues(parsed.data);
 
     if (values.isPublished) {
-      const issue = checkPublishQuality({
+      const issue = firstBlockingChecklistIssue({
+        title: values.title,
+        excerpt: values.excerpt,
         body: values.body,
+        categoryId: values.categoryId,
+        rating: values.rating,
+        pros: values.pros,
+        cons: values.cons,
+        verdict: values.verdict,
+        amazonUrl: values.amazonUrl,
+        imageUrl: values.imageUrl,
         faqs: values.faqs,
         specs: values.specs,
       });

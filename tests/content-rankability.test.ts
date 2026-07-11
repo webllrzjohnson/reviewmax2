@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { deriveBrand, parsePrice } from "../lib/product-meta";
-import { checkPublishQuality } from "../lib/post-quality";
+import { buildPublishChecklist, checkPublishQuality } from "../lib/post-quality";
 import {
   buildComparePairs,
   canonicalPair,
@@ -92,6 +92,60 @@ describe("checkPublishQuality", () => {
   it("blocks when both FAQs and specs are missing", () => {
     const msg = checkPublishQuality({ body: longBody, faqs: [], specs: {} });
     assert.ok(msg && msg.includes("FAQ"));
+  });
+
+  it("builds a publishing checklist for review quality, SEO, affiliate, and media readiness", () => {
+    const checklist = buildPublishChecklist({
+      title: "Best Cat Litter Box Review",
+      excerpt: "A practical summary for shoppers comparing litter boxes.",
+      body: `${longBody} This review includes an alternative section and buying advice.`,
+      categoryId: "cat-litter",
+      rating: 4.4,
+      pros: ["Controls odor"],
+      cons: ["Large footprint"],
+      verdict: "A strong pick for apartments.",
+      amazonUrl: "https://www.amazon.ca/dp/B000000000",
+      imageUrl: "https://example.com/product.jpg",
+      faqs: [{ q: "Is it easy to clean?", a: "Yes." }],
+      specs: { Material: "Plastic" },
+    });
+
+    assert.equal(checklist.every((item) => item.ok), true);
+    assert.deepEqual(checklist.map((item) => item.id), [
+      "title",
+      "excerpt",
+      "body-depth",
+      "category",
+      "rating",
+      "pros-cons",
+      "verdict",
+      "affiliate-link",
+      "image",
+      "rich-results",
+      "no-placeholders",
+    ]);
+  });
+
+  it("flags drafts that are not ready to publish", () => {
+    const checklist = buildPublishChecklist({
+      title: "TODO",
+      excerpt: "",
+      body: "As an AI language model, placeholder text.",
+      categoryId: "",
+      rating: null,
+      pros: [],
+      cons: [],
+      verdict: "",
+      amazonUrl: "",
+      imageUrl: null,
+      faqs: [],
+      specs: {},
+    });
+
+    const failed = checklist.filter((item) => !item.ok).map((item) => item.id);
+    assert.ok(failed.includes("affiliate-link"));
+    assert.ok(failed.includes("image"));
+    assert.ok(failed.includes("no-placeholders"));
   });
 });
 

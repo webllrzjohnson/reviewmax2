@@ -148,6 +148,21 @@ export async function ReviewDetail({
             </div>
           ) : null}
         </aside>
+
+        <section className="mt-6 grid gap-3 md:grid-cols-3" aria-label="Review summary">
+          <SummaryTile
+            label="Best for"
+            value={post.pros[0] ?? `Shoppers comparing ${post.category?.name ?? "this category"}`}
+          />
+          <SummaryTile
+            label="Skip if"
+            value={post.cons[0] ?? "You need features this product does not offer"}
+          />
+          <SummaryTile
+            label="Score snapshot"
+            value={`${post.rating ?? "—"}/5 Verdict score`}
+          />
+        </section>
       </section>
 
       <ShareBar
@@ -230,6 +245,17 @@ export async function ReviewDetail({
         />
       ) : null}
     </article>
+  );
+}
+
+function SummaryTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border bg-muted/30 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-medium leading-relaxed">{value}</p>
+    </div>
   );
 }
 
@@ -337,6 +363,31 @@ function JsonLd({ post }: { post: PostWithCategory }) {
         }
       : null;
 
+  const breadcrumbLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: siteUrl() },
+      { "@type": "ListItem", position: 2, name: "Reviews", item: `${siteUrl()}/blog` },
+      ...(post.category
+        ? [
+            {
+              "@type": "ListItem",
+              position: 3,
+              name: post.category.name,
+              item: `${siteUrl()}/category/${post.category.slug}`,
+            },
+          ]
+        : []),
+      {
+        "@type": "ListItem",
+        position: post.category ? 4 : 3,
+        name: post.title,
+        item: url,
+      },
+    ],
+  };
+
   return (
     <>
       <script
@@ -353,6 +404,10 @@ function JsonLd({ post }: { post: PostWithCategory }) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }}
         />
       )}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+      />
     </>
   );
 }
