@@ -165,6 +165,16 @@ export const automationSettings = pgTable("automation_settings", {
     .defaultNow(),
 });
 
+export const aiGenerationSettings = pgTable("ai_generation_settings", {
+  id: text("id").primaryKey().default("default"),
+  anthropicModel: text("anthropic_model"),
+  openaiModel: text("openai_model"),
+  reviewSystemPrompt: text("review_system_prompt"),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .defaultNow(),
+});
+
 export const categoriesRelations = relations(categories, ({ many }) => ({
   posts: many(posts),
 }));

@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   markStaleAutomationRunsFailedAction,
 } from "@/actions/automation-runs";
+import { AiGenerationSettingsForm } from "@/components/admin/AiGenerationSettingsForm";
 import { AutomationSettingsForm } from "@/components/admin/AutomationSettingsForm";
 import { DiscoverForm } from "@/components/admin/DiscoverForm";
 import { MonthlySummaryButton } from "@/components/admin/MonthlySummaryButton";
@@ -19,15 +20,17 @@ import {
   getMonthlyAutomationSummaryForDashboard,
   getRecentAutomationRuns,
 } from "@/lib/automation-data";
+import { getAiGenerationSettingsForDashboard } from "@/lib/ai-settings-data";
 import { cn, formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function AutomationPage() {
-  const [runs, settings, monthlySummary] = await Promise.all([
+  const [runs, settings, monthlySummary, aiSettings] = await Promise.all([
     getRecentAutomationRuns(10),
     getAutomationSettingsForDashboard(),
     getMonthlyAutomationSummaryForDashboard(),
+    getAiGenerationSettingsForDashboard(),
   ]);
   const hasStaleRuns = runs.some((run) => run.displayStatus === "stale");
 
@@ -62,6 +65,18 @@ export default async function AutomationPage() {
         </CardHeader>
         <CardContent>
           <AutomationSettingsForm settings={settings} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>AI review generation settings</CardTitle>
+          <CardDescription>
+            Change the Claude/OpenAI model names and the prompt used for generated review drafts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AiGenerationSettingsForm settings={aiSettings} />
         </CardContent>
       </Card>
 

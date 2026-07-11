@@ -6,6 +6,7 @@ import {
 } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
 import { parseJsonLoose } from "@/lib/parse-json";
+import { buildReviewGenerationPrompt } from "@/lib/ai-settings";
 
 /** Shape the model is asked to return; validated before we trust any field. */
 export const GeneratedReviewSchema = z.object({
@@ -47,11 +48,6 @@ export type GeneratedReviewDraft = {
 export type GenerateReviewResult =
   | { ok: true; draft: GeneratedReviewDraft; model: "claude" | "openai" }
   | { ok: false; message: string };
-
-/** Retired 2026-06-15; override with ANTHROPIC_MODEL if needed. */
-const CLAUDE_MODEL =
-  process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-6";
-const OPENAI_MODEL = "gpt-4o-mini";
 
 /** Coerce common model formatting mistakes before Zod validation. */
 export function normalizeGeneratedReviewJson(input: unknown): unknown {
@@ -114,6 +110,8 @@ export async function generateReviewDraft(params: {
   }
 
   const amazonUrl = await expandAmazonProductUrl(params.amazon_url);
+  const { getAiGenerationSettingsConfig } = await import("@/lib/ai-settings-data");
+  const aiSettings = await getAiGenerationSettingsConfig();
 
   const slugBase = params.product_name
     .toLowerCase()
@@ -123,29 +121,13 @@ export async function generateReviewDraft(params: {
     .replace(/-+$/, "");
   const slug = `${slugBase || "product"}-${Date.now().toString(36)}`;
 
-  const system = `You write honest Amazon affiliate product reviews for Verdict.
-Return ONLY valid JSON (no markdown fences) matching this schema:
-{
-  "title": "string",
-  "excerpt": "1-2 sentences",
-  "body": "markdown article, 500-900 words. Include a '## Who it's for' section and a '## Who should skip it' section, a paragraph comparing it to typical alternatives in its category, and 1-2 inline markdown links to the product using the exact Amazon URL from the user message (descriptive anchor text such as the product name or 'check the current price', never 'click here').",
-  "rating": 0-5 number with one decimal,
-  "pros": ["string", ...],
-  "cons": ["string", ...],
-  "verdict": "2-4 sentence summary",
-  "faqs": [{ "q": "common buyer question", "a": "concise answer" }, ...],
-  "specs": { "Spec name": "value", ... }
-}
-Provide 3-5 FAQs that match the questions real shoppers search for (People Also Ask style).
-Provide 4-8 key specs (e.g. material, dimensions, weight, power, warranty) as a flat object of string values; omit any you cannot reasonably infer rather than guessing wildly.
-For product links, use ONLY the exact Amazon URL given in the user message - do not invent, shorten, or modify URLs, and do not append a tracking tag (the site adds the affiliate tag automatically).
-Do not invent fake test results; write a plausible editorial tone grounded in the product's listed features.
-Product images are fetched from Amazon when the review is published - do not include an image URL.`;
-
-  const user = `Product: ${params.product_name}
-Category slug: ${params.category_slug}
-Amazon URL: ${amazonUrl}
-${params.notes ? `Editor notes: ${params.notes}` : ""}`;
+  const system = aiSettings.reviewSystemPrompt;
+  const user = buildReviewGenerationPrompt({
+    productName: params.product_name,
+    categorySlug: params.category_slug,
+    amazonUrl,
+    notes: params.notes,
+  });
 
   const providers: Array<"claude" | "openai"> = [];
   if (hasClaude) providers.push("claude");
@@ -158,8 +140,8 @@ ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
     try {
       raw =
         provider === "claude"
-          ? await callClaude(system, user)
-          : await callOpenAI(system, user);
+          ? await callClaude(system, user, aiSettings.anthropicModel)
+          : await callOpenAI(system, user, aiSettings.openaiModel);
     } catch (error) {
       console.error(`generateReviewDraft: ${provider} request failed`, error);
       lastError =
@@ -240,7 +222,7 @@ ${params.notes ? `Editor notes: ${params.notes}` : ""}`;
   };
 }
 
-async function callClaude(system: string, user: string): Promise<string> {
+async function callClaude(system: string, user: string, model: string): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -249,7 +231,7 @@ async function callClaude(system: string, user: string): Promise<string> {
       "x-api-key": process.env.ANTHROPIC_API_KEY ?? "",
     },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
+      model,
       max_tokens: 4096,
       system,
       messages: [{ role: "user", content: user }],
@@ -267,10 +249,10 @@ async function callClaude(system: string, user: string): Promise<string> {
   return data.content?.[0]?.text ?? "";
 }
 
-async function callOpenAI(system: string, user: string): Promise<string> {
+async function callOpenAI(system: string, user: string, model: string): Promise<string> {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const response = await client.chat.completions.create({
-    model: OPENAI_MODEL,
+    model,
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },
