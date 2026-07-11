@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { deriveBrand, parsePrice } from "../lib/product-meta";
-import { buildPublishChecklist, checkPublishQuality } from "../lib/post-quality";
+import {
+  buildPublishChecklist,
+  checkPublishQuality,
+  firstBlockingChecklistIssue,
+} from "../lib/post-quality";
+import { buildReviewJsonLd } from "../lib/review-schema";
 import {
   buildComparePairs,
   canonicalPair,
@@ -146,6 +151,85 @@ describe("checkPublishQuality", () => {
     assert.ok(failed.includes("affiliate-link"));
     assert.ok(failed.includes("image"));
     assert.ok(failed.includes("no-placeholders"));
+  });
+
+  it("returns the first blocking issue for full publish gates", () => {
+    const issue = firstBlockingChecklistIssue({
+      title: "Best Cat Litter Box Review",
+      excerpt: "A practical summary for shoppers comparing litter boxes.",
+      body: longBody,
+      categoryId: "cat-litter",
+      rating: 4.4,
+      pros: ["Controls odor"],
+      cons: ["Large footprint"],
+      verdict: "A strong pick for apartments.",
+      amazonUrl: "",
+      imageUrl: null,
+      faqs: [{ q: "Is it easy to clean?", a: "Yes." }],
+      specs: { Material: "Plastic" },
+    });
+
+    assert.equal(
+      issue,
+      "Affiliate/product link present: Add a valid Amazon/product URL before publishing.",
+    );
+  });
+});
+
+describe("review structured data", () => {
+  const post = {
+    title: "Anker Widget Review",
+    slug: "anker-widget-review",
+    excerpt: "A practical product review for comparison shoppers.",
+    verdict: "A reliable choice for most shoppers.",
+    amazon_url: "https://www.amazon.ca/dp/B000000000",
+    image_url: "https://example.com/widget.jpg",
+    rating: 4.6,
+    price_at_review: "$49.99",
+    published_at: "2026-01-01T00:00:00.000Z",
+    updated_at: "2026-01-02T00:00:00.000Z",
+    specs: { Material: "Plastic" },
+    faqs: [{ q: "Is it portable?", a: "Yes." }],
+    category: {
+      id: "cat-1",
+      name: "Widgets",
+      slug: "widgets",
+      description: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+    },
+  };
+
+  it("builds product, article, FAQ, and breadcrumb JSON-LD", () => {
+    const nodes = buildReviewJsonLd(post, "https://verdict.example");
+
+    assert.deepEqual(nodes.map((node) => node["@type"]), [
+      "Product",
+      "Article",
+      "FAQPage",
+      "BreadcrumbList",
+    ]);
+    const product = nodes[0] as {
+      review: { reviewRating: { ratingValue: number } };
+      offers: { price: string };
+    };
+    const faq = nodes[2] as { mainEntity: Array<{ name: string }> };
+    const breadcrumb = nodes[3] as {
+      itemListElement: Array<{ item: string }>;
+    };
+
+    assert.equal(product.review.reviewRating.ratingValue, 4.6);
+    assert.equal(product.offers.price, "49.99");
+    assert.equal(faq.mainEntity[0].name, "Is it portable?");
+    assert.equal(
+      breadcrumb.itemListElement.at(-1)?.item,
+      "https://verdict.example/blog/anker-widget-review",
+    );
+  });
+
+  it("omits FAQPage when there are no FAQs", () => {
+    const nodes = buildReviewJsonLd({ ...post, faqs: [] }, "https://verdict.example");
+
+    assert.equal(nodes.some((node) => node["@type"] === "FAQPage"), false);
   });
 });
 

@@ -9,7 +9,7 @@ import { getDbErrorCode } from "@/lib/db-errors";
 import { expandAmazonProductUrl, resolveAmazonProductImageUrlWithRetry } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
 import { maybePostReviewToPinterest } from "@/lib/pinterest";
-import { checkPublishQuality, firstBlockingChecklistIssue } from "@/lib/post-quality";
+import { firstBlockingChecklistIssue } from "@/lib/post-quality";
 import { PostEditorSchema, type PostEditorInput } from "@/lib/validations";
 
 export type PostActionState = { ok: boolean; message?: string; id?: string };
@@ -63,6 +63,47 @@ function parseUrlLines(value: string | undefined): string[] {
     } catch {
       return false;
     }
+  });
+}
+
+type PublishGateValues = {
+  title: string;
+  excerpt: string;
+  body: string;
+  categoryId: string;
+  rating: string | number | null;
+  pros: unknown;
+  cons: unknown;
+  verdict: string;
+  amazonUrl: string;
+  imageUrl: string | null;
+  faqs: unknown;
+  specs: unknown;
+};
+
+function publishGateIssue(values: PublishGateValues): string | null {
+  return firstBlockingChecklistIssue({
+    title: values.title,
+    excerpt: values.excerpt,
+    body: values.body,
+    categoryId: values.categoryId,
+    rating: values.rating,
+    pros: Array.isArray(values.pros)
+      ? values.pros.filter((p): p is string => typeof p === "string")
+      : [],
+    cons: Array.isArray(values.cons)
+      ? values.cons.filter((c): c is string => typeof c === "string")
+      : [],
+    verdict: values.verdict,
+    amazonUrl: values.amazonUrl,
+    imageUrl: values.imageUrl,
+    faqs: Array.isArray(values.faqs)
+      ? (values.faqs as Array<{ q: string; a: string }>)
+      : [],
+    specs:
+      values.specs && typeof values.specs === "object" && !Array.isArray(values.specs)
+        ? (values.specs as Record<string, string>)
+        : {},
   });
 }
 
@@ -179,9 +220,32 @@ export async function bulkSetPostsPublished(
     const now = new Date().toISOString();
 
     const existing = await db
-      .select({ id: posts.id, slug: posts.slug, publishedAt: posts.publishedAt })
+      .select({
+        id: posts.id,
+        slug: posts.slug,
+        publishedAt: posts.publishedAt,
+        title: posts.title,
+        excerpt: posts.excerpt,
+        body: posts.body,
+        categoryId: posts.categoryId,
+        rating: posts.rating,
+        pros: posts.pros,
+        cons: posts.cons,
+        verdict: posts.verdict,
+        amazonUrl: posts.amazonUrl,
+        imageUrl: posts.imageUrl,
+        faqs: posts.faqs,
+        specs: posts.specs,
+      })
       .from(posts)
       .where(inArray(posts.id, ids));
+
+    if (is_published) {
+      for (const post of existing) {
+        const issue = publishGateIssue(post);
+        if (issue) return { ok: false, message: `${post.slug}: ${issue}` };
+      }
+    }
 
     // Pinterest posting is intentionally skipped for bulk publishes: each pin
     // spawns Puppeteer, so generating N inline would risk a server-action
@@ -285,7 +349,16 @@ export async function setPostPublished(
       .select({
         publishedAt: posts.publishedAt,
         slug: posts.slug,
+        title: posts.title,
+        excerpt: posts.excerpt,
         body: posts.body,
+        categoryId: posts.categoryId,
+        rating: posts.rating,
+        pros: posts.pros,
+        cons: posts.cons,
+        verdict: posts.verdict,
+        amazonUrl: posts.amazonUrl,
+        imageUrl: posts.imageUrl,
         faqs: posts.faqs,
         specs: posts.specs,
       })
@@ -298,16 +371,7 @@ export async function setPostPublished(
     }
 
     if (is_published) {
-      const issue = checkPublishQuality({
-        body: post.body,
-        faqs: Array.isArray(post.faqs)
-          ? (post.faqs as Array<{ q: string; a: string }>)
-          : [],
-        specs:
-          post.specs && typeof post.specs === "object" && !Array.isArray(post.specs)
-            ? (post.specs as Record<string, string>)
-            : {},
-      });
+      const issue = publishGateIssue(post);
       if (issue) return { ok: false, message: issue };
     }
 

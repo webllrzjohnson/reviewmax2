@@ -11,8 +11,8 @@ import { PostBody } from "@/components/review/PostBody";
 import { formatDate, siteUrl, wasUpdatedAfterPublish, cn } from "@/lib/utils";
 import { categoryAccentForSlug } from "@/lib/category-colors";
 import { getAuthorForPost } from "@/lib/authors";
-import { deriveBrand, parsePrice } from "@/lib/product-meta";
 import { getRelatedPosts } from "@/lib/data";
+import { buildReviewJsonLd } from "@/lib/review-schema";
 import { BreadcrumbNav } from "@/components/common/BreadcrumbNav";
 import { ShareBar } from "@/components/common/ShareBar";
 import { TableOfContents } from "@/components/review/TableOfContents";
@@ -181,6 +181,8 @@ export async function ReviewDetail({
 
       <FaqAccordion faqs={post.faqs} />
 
+      <AlternativesSection current={post} alternatives={related.slice(0, 3)} />
+
       <GalleryLightbox images={post.gallery_urls ?? []} title={post.title} />
 
       <section
@@ -259,155 +261,70 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function JsonLd({ post }: { post: PostWithCategory }) {
-  const url = `${siteUrl()}/blog/${post.slug}`;
-  const fallbackImage =
-    "https://placehold.co/1200x630/e2e8f0/64748b?text=Product";
+function AlternativesSection({
+  current,
+  alternatives,
+}: {
+  current: PostWithCategory;
+  alternatives: PostWithCategory[];
+}) {
+  if (alternatives.length === 0) return null;
 
-  // Content is AI-generated and editor-reviewed, so we attribute reviews to the
-  // Verdict organization rather than asserting a named Person to search engines.
-  const authorLd = { "@type": "Organization", name: "Verdict" };
-  const publisherLd = { "@type": "Organization", name: "Verdict" };
-
-  const brand = deriveBrand(post.title);
-  const parsedPrice = parsePrice(post.price_at_review);
-
-  const offers = post.amazon_url
-    ? {
-        "@type": "Offer",
-        url: post.amazon_url,
-        availability: "https://schema.org/InStock",
-        ...(parsedPrice
-          ? {
-              price: parsedPrice.price,
-              priceCurrency: parsedPrice.priceCurrency,
-            }
-          : {}),
-      }
-    : undefined;
-
-  const reviewNode = {
-    "@type": "Review",
-    reviewRating: {
-      "@type": "Rating",
-      ratingValue: post.rating ?? undefined,
-      bestRating: 5,
-      worstRating: 0,
-    },
-    author: authorLd,
-    publisher: publisherLd,
-    datePublished: post.published_at ?? undefined,
-    reviewBody: post.verdict,
-  };
-
-  const specEntries = Object.entries(post.specs ?? {}).filter(
-    ([key, value]) => key.trim() && String(value).trim(),
+  return (
+    <section className="rounded-xl border bg-muted/20 p-5" aria-labelledby="alternatives-heading">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-primary">
+            Still deciding?
+          </p>
+          <h2 id="alternatives-heading" className="mt-1 text-xl font-bold">
+            Best alternatives to compare
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            If {current.title} is not quite right, compare it with similar
+            {current.category ? ` ${current.category.name.toLowerCase()}` : " products"} before buying.
+          </p>
+        </div>
+        {current.category ? (
+          <a
+            href={`/best/${current.category.slug}`}
+            className="rounded-full border border-primary/30 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+          >
+            View all picks →
+          </a>
+        ) : null}
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        {alternatives.map((item) => (
+          <a
+            key={item.id}
+            href={`/blog/${item.slug}`}
+            className="rounded-lg border bg-background p-3 transition-colors hover:border-primary/40 hover:bg-primary/5"
+          >
+            <p className="line-clamp-2 text-sm font-semibold">{item.title}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {item.rating ? `${item.rating}/5` : "Review"}
+              {item.pros[0] ? ` · ${item.pros[0]}` : ""}
+            </p>
+          </a>
+        ))}
+      </div>
+    </section>
   );
+}
 
-  // Single Product node with the review + aggregateRating nested inside it, the
-  // structure Google prefers for product review rich results.
-  const productLd = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: post.title,
-    image: post.image_url ? [post.image_url] : [fallbackImage],
-    description: post.excerpt,
-    ...(brand ? { brand: { "@type": "Brand", name: brand } } : {}),
-    ...(specEntries.length > 0
-      ? {
-          additionalProperty: specEntries.map(([name, value]) => ({
-            "@type": "PropertyValue",
-            name,
-            value,
-          })),
-        }
-      : {}),
-    ...(offers ? { offers } : {}),
-    review: reviewNode,
-    ...(post.rating != null
-      ? {
-          aggregateRating: {
-            "@type": "AggregateRating",
-            ratingValue: post.rating,
-            bestRating: 5,
-            worstRating: 0,
-            reviewCount: 1,
-          },
-        }
-      : {}),
-  };
-
-  const articleLd = {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    headline: post.title,
-    description: post.excerpt,
-    datePublished: post.published_at ?? undefined,
-    dateModified: post.updated_at ?? post.published_at ?? undefined,
-    image: post.image_url ? [post.image_url] : [fallbackImage],
-    author: authorLd,
-    publisher: publisherLd,
-    mainEntityOfPage: url,
-  };
-
-  const faqLd =
-    post.faqs && post.faqs.length > 0
-      ? {
-          "@context": "https://schema.org",
-          "@type": "FAQPage",
-          mainEntity: post.faqs.map((f) => ({
-            "@type": "Question",
-            name: f.q,
-            acceptedAnswer: { "@type": "Answer", text: f.a },
-          })),
-        }
-      : null;
-
-  const breadcrumbLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: siteUrl() },
-      { "@type": "ListItem", position: 2, name: "Reviews", item: `${siteUrl()}/blog` },
-      ...(post.category
-        ? [
-            {
-              "@type": "ListItem",
-              position: 3,
-              name: post.category.name,
-              item: `${siteUrl()}/category/${post.category.slug}`,
-            },
-          ]
-        : []),
-      {
-        "@type": "ListItem",
-        position: post.category ? 4 : 3,
-        name: post.title,
-        item: url,
-      },
-    ],
-  };
+function JsonLd({ post }: { post: PostWithCategory }) {
+  const nodes = buildReviewJsonLd(post, siteUrl());
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productLd) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd) }}
-      />
-      {faqLd && (
+      {nodes.map((node) => (
         <script
+          key={String(node["@type"])}
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(node) }}
         />
-      )}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
-      />
+      ))}
     </>
   );
 }
