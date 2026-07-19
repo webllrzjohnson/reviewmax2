@@ -1,16 +1,18 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { updateAutomationSettingsAction, type AutomationSettingsState } from "@/actions/automation-runs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { AutomationSettingsConfig } from "@/lib/automation-settings";
+import { BALANCED_OUTDOOR_AUTOMATION_CATEGORIES } from "@/lib/automation-category-presets";
 
 const initialState: AutomationSettingsState = { ok: false };
 
 export function AutomationSettingsForm({ settings }: { settings: AutomationSettingsConfig }) {
+  const [categories, setCategories] = useState(settings.categories.join("\n"));
   const [state, formAction, pending] = useActionState(
     updateAutomationSettingsAction,
     initialState,
@@ -64,16 +66,32 @@ export function AutomationSettingsForm({ settings }: { settings: AutomationSetti
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="categories">Categories</Label>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Label htmlFor="categories">Categories and rotation groups</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setCategories(BALANCED_OUTDOOR_AUTOMATION_CATEGORIES.join("\n"))
+            }
+          >
+            Load balanced outdoor preset
+          </Button>
+        </div>
         <Textarea
           id="categories"
           name="categories"
-          rows={6}
-          defaultValue={settings.categories.join("\n")}
-          placeholder="cat litter\ndog grooming\noutdoor seasonal"
+          rows={12}
+          value={categories}
+          onChange={(event) => setCategories(event.target.value)}
+          placeholder={"[Home & Property]\nCleaning & Floor Care\nTools & DIY\n[Camping & Campsite]\nTents & Shelters\nCoolers & Ice Packs"}
         />
         <p className="text-xs text-muted-foreground">
-          One category per line. Cron rotates through this list; max drafts remains controlled by AUTOMATION_MAX_DRAFTS_PER_RUN.
+          One category per line. Add bracketed headers such as [Camping &
+          Campsite] to rotate across groups before advancing within each group.
+          Flat lists still rotate normally. Max drafts remains controlled by
+          AUTOMATION_MAX_DRAFTS_PER_RUN.
         </p>
       </div>
 

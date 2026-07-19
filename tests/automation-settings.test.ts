@@ -15,6 +15,15 @@ describe("automation settings helpers", () => {
     );
   });
 
+  it("preserves category group headers while normalizing and deduplicating products", () => {
+    assert.deepEqual(
+      normalizeAutomationCategories(
+        "[Camping]\nTents & Shelters\nCoolers & Ice Packs\nTents & Shelters",
+      ),
+      ["[Camping]", "Tents & Shelters", "Coolers & Ice Packs"],
+    );
+  });
+
   it("merges saved settings over environment defaults without changing max draft settings", () => {
     const config = mergeAutomationSettingsWithEnv(
       {

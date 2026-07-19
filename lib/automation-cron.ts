@@ -21,12 +21,59 @@ export function parseAutomationCronConfig(env: EnvLike): AutomationCronConfig {
   };
 }
 
+export type AutomationCategoryGroup = {
+  name: string;
+  categories: string[];
+};
+
+const CATEGORY_GROUP_HEADER = /^\[([^\]]+)]$/;
+
+export function parseAutomationCategoryGroups(
+  categories: string[],
+): AutomationCategoryGroup[] {
+  const groups: AutomationCategoryGroup[] = [];
+  let current: AutomationCategoryGroup | null = null;
+
+  for (const rawValue of categories) {
+    const value = rawValue.trim();
+    if (!value) continue;
+
+    const header = value.match(CATEGORY_GROUP_HEADER)?.[1]?.trim();
+    if (header) {
+      current = groups.find(
+        (group) => group.name.toLowerCase() === header.toLowerCase(),
+      ) ?? null;
+      if (!current) {
+        current = { name: header, categories: [] };
+        groups.push(current);
+      }
+      continue;
+    }
+
+    if (!current) {
+      current = { name: "General", categories: [] };
+      groups.push(current);
+    }
+    if (!current.categories.some((category) => category.toLowerCase() === value.toLowerCase())) {
+      current.categories.push(value);
+    }
+  }
+
+  return groups.filter((group) => group.categories.length > 0);
+}
+
 export function pickCronDiscoveryCategory(categories: string[], date = new Date()): string | null {
-  if (categories.length === 0) return null;
+  const groups = parseAutomationCategoryGroups(categories);
+  if (groups.length === 0) return null;
+
   const start = Date.UTC(date.getUTCFullYear(), 0, 0);
   const today = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-  const dayOfYear = Math.floor((today - start) / 86_400_000);
-  return categories[(dayOfYear - 1) % categories.length] ?? null;
+  const dayIndex = Math.floor((today - start) / 86_400_000) - 1;
+  const group = groups[dayIndex % groups.length];
+  if (!group) return null;
+
+  const groupCycle = Math.floor(dayIndex / groups.length);
+  return group.categories[groupCycle % group.categories.length] ?? null;
 }
 
 export function getAuthorizedCronSecret(authorization: string | null): string | null {

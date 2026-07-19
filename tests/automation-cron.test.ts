@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   getAuthorizedCronSecret,
+  parseAutomationCategoryGroups,
   parseAutomationCronConfig,
   pickCronDiscoveryCategory,
 } from "@/lib/automation-cron";
+import { BALANCED_OUTDOOR_AUTOMATION_CATEGORIES } from "@/lib/automation-category-presets";
 
 describe("automation cron helpers", () => {
   it("parses configured discovery categories and clamps max drafts", () => {
@@ -37,6 +39,89 @@ describe("automation cron helpers", () => {
       pickCronDiscoveryCategory(["cat litter", "dog food", "sunscreen"], new Date("2026-07-07T12:00:00Z")),
       "dog food",
     );
+  });
+
+  it("parses bracketed category groups while keeping ungrouped categories compatible", () => {
+    assert.deepEqual(
+      parseAutomationCategoryGroups([
+        "[Home & DIY]",
+        "Cleaning & Floor Care",
+        "Tools & DIY",
+        "[Camping]",
+        "Tents & Shelters",
+        "Coolers & Ice Packs",
+      ]),
+      [
+        {
+          name: "Home & DIY",
+          categories: ["Cleaning & Floor Care", "Tools & DIY"],
+        },
+        {
+          name: "Camping",
+          categories: ["Tents & Shelters", "Coolers & Ice Packs"],
+        },
+      ],
+    );
+
+    assert.deepEqual(parseAutomationCategoryGroups(["cat litter", "dog food"]), [
+      { name: "General", categories: ["cat litter", "dog food"] },
+    ]);
+  });
+
+  it("rotates across groups before advancing within each group", () => {
+    const categories = [
+      "[Home & DIY]",
+      "Cleaning & Floor Care",
+      "Tools & DIY",
+      "[Camping]",
+      "Tents & Shelters",
+      "Coolers & Ice Packs",
+      "[Cycling]",
+      "Bike Helmets & Protective Gear",
+      "Bike Pumps Tools & Repair Kits",
+    ];
+
+    assert.equal(
+      pickCronDiscoveryCategory(categories, new Date("2026-01-01T12:00:00Z")),
+      "Cleaning & Floor Care",
+    );
+    assert.equal(
+      pickCronDiscoveryCategory(categories, new Date("2026-01-02T12:00:00Z")),
+      "Tents & Shelters",
+    );
+    assert.equal(
+      pickCronDiscoveryCategory(categories, new Date("2026-01-03T12:00:00Z")),
+      "Bike Helmets & Protective Gear",
+    );
+    assert.equal(
+      pickCronDiscoveryCategory(categories, new Date("2026-01-04T12:00:00Z")),
+      "Tools & DIY",
+    );
+  });
+
+  it("keeps the balanced preset comprehensive across major outdoor groups", () => {
+    const groups = parseAutomationCategoryGroups([
+      ...BALANCED_OUTDOOR_AUTOMATION_CATEGORIES,
+    ]);
+
+    assert.deepEqual(
+      groups.map((group) => group.name),
+      [
+        "Home & Property",
+        "Camping & Campsite",
+        "Cycling & Biking",
+        "Hiking & Trail",
+        "Water & Beach",
+        "Outdoor Apparel",
+        "Outdoor Hobbies & Adventure",
+      ],
+    );
+    assert.ok(groups.flatMap((group) => group.categories).includes("Tents & Shelters"));
+    assert.ok(groups.flatMap((group) => group.categories).includes("Ropes Cordage & Tie-Downs"));
+    assert.ok(groups.flatMap((group) => group.categories).includes("Coolers & Ice Packs"));
+    assert.ok(groups.flatMap((group) => group.categories).includes("Mountain Biking"));
+    assert.ok(groups.flatMap((group) => group.categories).includes("Surfboards & Bodyboards"));
+    assert.ok(groups.flatMap((group) => group.categories).includes("Hiking Apparel"));
   });
 
   it("extracts bearer tokens from authorization headers", () => {

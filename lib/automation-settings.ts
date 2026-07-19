@@ -26,6 +26,10 @@ export function normalizeAutomationCategories(input: string | string[]): string[
   for (const value of raw) {
     const category = value.trim().replace(/\s+/g, " ");
     if (!category) continue;
+    if (/^\[[^\]]+]$/.test(category)) {
+      categories.push(category);
+      continue;
+    }
     const key = category.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
