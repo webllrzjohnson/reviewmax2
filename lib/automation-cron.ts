@@ -62,6 +62,10 @@ export function parseAutomationCategoryGroups(
   return groups.filter((group) => group.categories.length > 0);
 }
 
+export function hasAutomationDiscoveryCategories(categories: string[]): boolean {
+  return parseAutomationCategoryGroups(categories).length > 0;
+}
+
 export function pickCronDiscoveryCategory(categories: string[], date = new Date()): string | null {
   const groups = parseAutomationCategoryGroups(categories);
   if (groups.length === 0) return null;

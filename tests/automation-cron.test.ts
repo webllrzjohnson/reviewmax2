@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   getAuthorizedCronSecret,
+  hasAutomationDiscoveryCategories,
   parseAutomationCategoryGroups,
   parseAutomationCronConfig,
   pickCronDiscoveryCategory,
@@ -66,6 +67,17 @@ describe("automation cron helpers", () => {
     assert.deepEqual(parseAutomationCategoryGroups(["cat litter", "dog food"]), [
       { name: "General", categories: ["cat litter", "dog food"] },
     ]);
+  });
+
+  it("rejects configurations containing only group headers", () => {
+    assert.equal(
+      hasAutomationDiscoveryCategories(["[Camping]", "[Cycling]"]),
+      false,
+    );
+    assert.equal(
+      hasAutomationDiscoveryCategories(["[Camping]", "Tents & Shelters"]),
+      true,
+    );
   });
 
   it("rotates across groups before advancing within each group", () => {

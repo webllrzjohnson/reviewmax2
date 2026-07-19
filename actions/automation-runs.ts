@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { automationRuns, automationSettings } from "@/lib/db/schema";
 import { AUTOMATION_STALE_RUN_MINUTES } from "@/lib/automation";
+import { hasAutomationDiscoveryCategories } from "@/lib/automation-cron";
 import {
   AUTOMATION_SETTINGS_ID,
   buildMonthlyAutomationSummaryEmailHtml,
@@ -52,7 +53,7 @@ export async function updateAutomationSettingsAction(
   await requireAdmin();
 
   const categories = normalizeAutomationCategories(String(formData.get("categories") ?? ""));
-  if (categories.length === 0) {
+  if (!hasAutomationDiscoveryCategories(categories)) {
     return { ok: false, message: "Add at least one automation category." };
   }
 
