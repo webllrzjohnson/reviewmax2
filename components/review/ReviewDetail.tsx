@@ -23,6 +23,7 @@ import { FaqAccordion } from "@/components/review/FaqAccordion";
 import { GalleryLightbox } from "@/components/review/GalleryLightbox";
 import { SpecList } from "@/components/review/SpecList";
 import { EvaluationNote } from "@/components/review/EvaluationNote";
+import { buildReviewSummary } from "@/lib/review-summary";
 
 export async function ReviewDetail({
   post,
@@ -34,6 +35,14 @@ export async function ReviewDetail({
   const headings = extractHeadings(post.body);
   const accent = categoryAccentForSlug(post.category?.slug ?? "");
   const author = getAuthorForPost(post);
+  const summary = buildReviewSummary({
+    title: post.title,
+    category: post.category,
+    pros: post.pros,
+    cons: post.cons,
+    body: post.body,
+    rating: post.rating,
+  });
 
   return (
     <article className={cn("space-y-8", post.amazon_url ? "pb-24 sm:pb-28" : undefined)}>
@@ -150,18 +159,9 @@ export async function ReviewDetail({
         </aside>
 
         <section className="mt-6 grid gap-3 md:grid-cols-3" aria-label="Review summary">
-          <SummaryTile
-            label="Best for"
-            value={post.pros[0] ?? `Shoppers comparing ${post.category?.name ?? "this category"}`}
-          />
-          <SummaryTile
-            label="Skip if"
-            value={post.cons[0] ?? "You need features this product does not offer"}
-          />
-          <SummaryTile
-            label="Score snapshot"
-            value={`${post.rating ?? "—"}/5 Verdict score`}
-          />
+          <SummaryTile label="Best for" value={summary.bestFor} />
+          <SummaryTile label="Skip if" value={summary.skipIf} />
+          <SummaryTile label="Standout" value={summary.standOut} />
         </section>
       </section>
 
