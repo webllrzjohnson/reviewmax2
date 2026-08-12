@@ -12,7 +12,7 @@ import {
 } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
 import {
-  formatPinterestPublishMessage,
+  formatPostPublishMessage,
   maybePostReviewToPinterest,
   type PinterestResult,
 } from "@/lib/pinterest";
@@ -420,7 +420,7 @@ export async function setPostPublished(
     revalidatePostPaths(post.slug);
     return {
       ok: true,
-      message: formatPinterestPublishMessage(pinterestResult),
+      message: formatPostPublishMessage(is_published, pinterestResult),
     };
   } catch (e) {
     console.warn(e);
@@ -612,7 +612,7 @@ export async function updatePost(
       ok: true,
       id,
       message: firstPublish
-        ? formatPinterestPublishMessage(pinterestResult)
+        ? formatPostPublishMessage(values.isPublished, pinterestResult)
         : "Post saved.",
     };
   } catch (e) {

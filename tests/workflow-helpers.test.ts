@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { parseJsonLoose } from "../lib/parse-json";
-import { formatPinterestPublishMessage, pickBoardId } from "../lib/pinterest";
+import {
+  formatPinterestPublishMessage,
+  formatPostPublishMessage,
+  pickBoardId,
+} from "../lib/pinterest";
 import { dedupeSerpResultsByBrand } from "../lib/serp-products";
 
 describe("parseJsonLoose", () => {
@@ -78,6 +82,23 @@ describe("formatPinterestPublishMessage", () => {
         message: "Pinterest 401: invalid token",
       }),
       "Post published. Pinterest failed: Pinterest 401: invalid token.",
+    );
+  });
+});
+
+describe("formatPostPublishMessage", () => {
+  it("reports unpublishing without mentioning Pinterest", () => {
+    assert.equal(formatPostPublishMessage(false, null), "Post unpublished.");
+  });
+
+  it("includes Pinterest status when publishing", () => {
+    assert.equal(
+      formatPostPublishMessage(true, {
+        ok: false,
+        skipped: true,
+        message: "PINTEREST_ACCESS_TOKEN unset",
+      }),
+      "Post published. Pinterest skipped: PINTEREST_ACCESS_TOKEN unset.",
     );
   });
 });

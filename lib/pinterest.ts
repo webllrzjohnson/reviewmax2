@@ -81,6 +81,15 @@ export function formatPinterestPublishMessage(result: PinterestResult | null) {
   return `Post published. Pinterest failed: ${normalizeMessage(result.message, "Unknown error")}`;
 }
 
+export function formatPostPublishMessage(
+  isPublished: boolean,
+  pinterestResult: PinterestResult | null,
+) {
+  return isPublished
+    ? formatPinterestPublishMessage(pinterestResult)
+    : "Post unpublished.";
+}
+
 /**
  * Best-effort: generates a pin image and posts it to Pinterest on publish.
  * Returns rather than throwing so a failure never blocks publishing. No-ops when

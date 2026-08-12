@@ -43,10 +43,7 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
           Create one manually
         </Link>{" "}
         or generate one from{" "}
-        <Link
-          href="/dashboard/new-review"
-          className="text-primary underline"
-        >
+        <Link href="/dashboard/new-review" className="text-primary underline">
           New review
         </Link>
         .
@@ -62,7 +59,11 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
   function toggleOne(id: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   }
@@ -81,9 +82,7 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
     <div className="space-y-3">
       {someSelected && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3">
-          <span className="text-sm font-medium">
-            {selected.size} selected
-          </span>
+          <span className="text-sm font-medium">{selected.size} selected</span>
           <div className="ml-auto flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -92,7 +91,11 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
               onClick={() =>
                 startTransition(async () => {
                   const r = await bulkSetPostsPublished(selectedIds, true);
-                  if (r.ok) { toast.success(r.message); } else { toast.error(r.message); }
+                  if (r.ok) {
+                    toast.success(r.message);
+                  } else {
+                    toast.error(r.message);
+                  }
                   refresh();
                 })
               }
@@ -106,7 +109,11 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
               onClick={() =>
                 startTransition(async () => {
                   const r = await bulkSetPostsPublished(selectedIds, false);
-                  if (r.ok) { toast.success(r.message); } else { toast.error(r.message); }
+                  if (r.ok) {
+                    toast.success(r.message);
+                  } else {
+                    toast.error(r.message);
+                  }
                   refresh();
                 })
               }
@@ -136,7 +143,11 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                     onClick={() =>
                       startTransition(async () => {
                         const r = await bulkDeletePosts(selectedIds);
-                        if (r.ok) { toast.success(r.message); } else { toast.error(r.message); }
+                        if (r.ok) {
+                          toast.success(r.message);
+                        } else {
+                          toast.error(r.message);
+                        }
                         refresh();
                       })
                     }
@@ -219,7 +230,9 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                 <td className="px-4 py-3 align-top">
                   <Badge
                     variant={post.is_published ? "default" : "secondary"}
-                    className={cn(!post.is_published && "text-muted-foreground")}
+                    className={cn(
+                      !post.is_published && "text-muted-foreground",
+                    )}
                   >
                     {post.is_published ? "Published" : "Draft"}
                   </Badge>
@@ -241,7 +254,9 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                           const result = await retryPostImage(post.id);
                           toast.dismiss(`img-${post.id}`);
                           if (!result.ok) {
-                            toast.error(result.message ?? "Could not fetch image.");
+                            toast.error(
+                              result.message ?? "Could not fetch image.",
+                            );
                           } else {
                             toast.success("Image updated.");
                             refresh();
@@ -256,7 +271,9 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                 <td className="px-4 py-3 align-top text-right">
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <Button variant="outline" size="sm" asChild>
-                      <Link href={`/dashboard/posts/${post.id}/edit`}>Edit</Link>
+                      <Link href={`/dashboard/posts/${post.id}/edit`}>
+                        Edit
+                      </Link>
                     </Button>
                     <Button
                       variant="ghost"
@@ -266,7 +283,11 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                       onClick={() =>
                         startTransition(async () => {
                           const r = await revalidatePostAction(post.slug);
-                          if (r.ok) { toast.success(r.message ?? "Cache cleared."); } else { toast.error(r.message); }
+                          if (r.ok) {
+                            toast.success(r.message ?? "Cache cleared.");
+                          } else {
+                            toast.error(r.message);
+                          }
                         })
                       }
                     >
@@ -285,11 +306,16 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                               !post.is_published,
                             );
                             if (!result.ok) {
-                              toast.error(result.message ?? "Could not update status.");
+                              toast.error(
+                                result.message ?? "Could not update status.",
+                              );
                               return;
                             }
                             toast.success(
-                              post.is_published ? "Post unpublished." : "Post published.",
+                              result.message ??
+                                (post.is_published
+                                  ? "Post unpublished."
+                                  : "Post published."),
                             );
                             refresh();
                           });
@@ -326,7 +352,9 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                               startTransition(async () => {
                                 const result = await deletePost(post.id);
                                 if (!result.ok) {
-                                  toast.error(result.message ?? "Could not delete post.");
+                                  toast.error(
+                                    result.message ?? "Could not delete post.",
+                                  );
                                   return;
                                 }
                                 toast.success("Post deleted.");
