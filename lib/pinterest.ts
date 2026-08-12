@@ -67,6 +67,20 @@ export type PinterestResult = {
   message?: string;
 };
 
+function normalizeMessage(message: string | undefined, fallback: string) {
+  const text = message?.trim() || fallback;
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
+export function formatPinterestPublishMessage(result: PinterestResult | null) {
+  if (!result) return "Post published.";
+  if (result.ok) return "Post published. Pinterest pin created.";
+  if (result.skipped) {
+    return `Post published. Pinterest skipped: ${normalizeMessage(result.message, "No reason provided")}`;
+  }
+  return `Post published. Pinterest failed: ${normalizeMessage(result.message, "Unknown error")}`;
+}
+
 /**
  * Best-effort: generates a pin image and posts it to Pinterest on publish.
  * Returns rather than throwing so a failure never blocks publishing. No-ops when
@@ -82,11 +96,14 @@ export async function maybePostReviewToPinterest(params: {
   imageUrl: string | null;
 }): Promise<PinterestResult> {
   if (!process.env.PINTEREST_ACCESS_TOKEN) {
-    return { ok: false, skipped: true, message: "PINTEREST_ACCESS_TOKEN unset" };
+    return {
+      ok: false,
+      skipped: true,
+      message: "PINTEREST_ACCESS_TOKEN unset",
+    };
   }
 
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   if (isLocalSiteUrl(baseUrl)) {
     return {
       ok: false,

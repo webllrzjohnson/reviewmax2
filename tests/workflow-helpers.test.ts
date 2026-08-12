@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { parseJsonLoose } from "../lib/parse-json";
-import { pickBoardId } from "../lib/pinterest";
+import { formatPinterestPublishMessage, pickBoardId } from "../lib/pinterest";
 import { dedupeSerpResultsByBrand } from "../lib/serp-products";
 
 describe("parseJsonLoose", () => {
@@ -48,6 +48,37 @@ describe("pickBoardId", () => {
     delete process.env.PINTEREST_BOARD_SKIN;
     delete process.env.PINTEREST_DEFAULT_BOARD_ID;
     assert.equal(pickBoardId("anything"), null);
+  });
+});
+
+describe("formatPinterestPublishMessage", () => {
+  it("reports a created Pinterest pin", () => {
+    assert.equal(
+      formatPinterestPublishMessage({ ok: true, skipped: false }),
+      "Post published. Pinterest pin created.",
+    );
+  });
+
+  it("reports a skipped Pinterest pin with the reason", () => {
+    assert.equal(
+      formatPinterestPublishMessage({
+        ok: false,
+        skipped: true,
+        message: "No product image for pin",
+      }),
+      "Post published. Pinterest skipped: No product image for pin.",
+    );
+  });
+
+  it("reports a failed Pinterest pin with the reason", () => {
+    assert.equal(
+      formatPinterestPublishMessage({
+        ok: false,
+        skipped: false,
+        message: "Pinterest 401: invalid token",
+      }),
+      "Post published. Pinterest failed: Pinterest 401: invalid token.",
+    );
   });
 });
 

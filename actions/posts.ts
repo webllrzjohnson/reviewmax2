@@ -6,9 +6,16 @@ import { db } from "@/lib/db";
 import { categories, posts } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
 import { getDbErrorCode } from "@/lib/db-errors";
-import { expandAmazonProductUrl, resolveAmazonProductImageUrlWithRetry } from "@/lib/amazon-image";
+import {
+  expandAmazonProductUrl,
+  resolveAmazonProductImageUrlWithRetry,
+} from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
-import { maybePostReviewToPinterest } from "@/lib/pinterest";
+import {
+  formatPinterestPublishMessage,
+  maybePostReviewToPinterest,
+  type PinterestResult,
+} from "@/lib/pinterest";
 import { firstBlockingChecklistIssue } from "@/lib/post-quality";
 import { PostEditorSchema, type PostEditorInput } from "@/lib/validations";
 
@@ -37,7 +44,10 @@ function parseSpecs(value: string | undefined): Record<string, string> {
 
 function parseFaqs(value: string | undefined): Array<{ q: string; a: string }> {
   if (!value?.trim()) return [];
-  const lines = value.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = value
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const faqs: Array<{ q: string; a: string }> = [];
   for (let i = 0; i < lines.length - 1; i += 2) {
     const q = lines[i].replace(/^Q:\s*/i, "").trim();
@@ -101,7 +111,9 @@ function publishGateIssue(values: PublishGateValues): string | null {
       ? (values.faqs as Array<{ q: string; a: string }>)
       : [],
     specs:
-      values.specs && typeof values.specs === "object" && !Array.isArray(values.specs)
+      values.specs &&
+      typeof values.specs === "object" &&
+      !Array.isArray(values.specs)
         ? (values.specs as Record<string, string>)
         : {},
   });
@@ -157,7 +169,9 @@ function revalidatePostPaths(slug?: string) {
 }
 
 /** Best-effort Pinterest pin on first publish; never blocks the publish action. */
-async function maybePinOnFirstPublish(postId: string) {
+async function maybePinOnFirstPublish(
+  postId: string,
+): Promise<PinterestResult | null> {
   try {
     const [row] = await db
       .select({
@@ -173,9 +187,9 @@ async function maybePinOnFirstPublish(postId: string) {
       .where(eq(posts.id, postId))
       .limit(1);
 
-    if (!row) return;
+    if (!row) return null;
 
-    await maybePostReviewToPinterest({
+    return await maybePostReviewToPinterest({
       title: row.title,
       excerpt: row.excerpt,
       slug: row.slug,
@@ -185,10 +199,17 @@ async function maybePinOnFirstPublish(postId: string) {
     });
   } catch (error) {
     console.error("maybePinOnFirstPublish: failed", error);
+    return {
+      ok: false,
+      skipped: false,
+      message: error instanceof Error ? error.message : "Pinterest post failed",
+    };
   }
 }
 
-export async function revalidatePostAction(slug: string): Promise<PostActionState> {
+export async function revalidatePostAction(
+  slug: string,
+): Promise<PostActionState> {
   try {
     await requireAdmin();
     revalidatePath(`/blog/${slug}`);
@@ -255,7 +276,8 @@ export async function bulkSetPostsPublished(
         .update(posts)
         .set({
           isPublished: is_published,
-          publishedAt: is_published && !post.publishedAt ? now : post.publishedAt,
+          publishedAt:
+            is_published && !post.publishedAt ? now : post.publishedAt,
           updatedAt: now,
         })
         .where(eq(posts.id, post.id));
@@ -316,7 +338,9 @@ export async function retryPostImage(id: string): Promise<PostActionState> {
 
     if (!post) return { ok: false, message: "Post not found." };
 
-    const imageUrl = await resolveAmazonProductImageUrlWithRetry(post.amazonUrl);
+    const imageUrl = await resolveAmazonProductImageUrlWithRetry(
+      post.amazonUrl,
+    );
     if (!imageUrl) {
       return {
         ok: false,
@@ -389,12 +413,15 @@ export async function setPostPublished(
       })
       .where(eq(posts.id, id));
 
-    if (firstPublish) {
-      await maybePinOnFirstPublish(id);
-    }
+    const pinterestResult = firstPublish
+      ? await maybePinOnFirstPublish(id)
+      : null;
 
     revalidatePostPaths(post.slug);
-    return { ok: true };
+    return {
+      ok: true,
+      message: formatPinterestPublishMessage(pinterestResult),
+    };
   } catch (e) {
     console.warn(e);
     return { ok: false, message: toActionError(e) };
@@ -572,16 +599,22 @@ export async function updatePost(
       })
       .where(eq(posts.id, id));
 
-    if (firstPublish) {
-      await maybePinOnFirstPublish(id);
-    }
+    const pinterestResult = firstPublish
+      ? await maybePinOnFirstPublish(id)
+      : null;
 
     revalidatePostPaths(existing.slug);
     if (existing.slug !== values.slug) {
       revalidatePostPaths(values.slug);
     }
 
-    return { ok: true, id, message: "Post saved." };
+    return {
+      ok: true,
+      id,
+      message: firstPublish
+        ? formatPinterestPublishMessage(pinterestResult)
+        : "Post saved.",
+    };
   } catch (e) {
     console.warn(e);
     if (getDbErrorCode(e) === "23505") {
