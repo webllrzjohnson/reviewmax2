@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { resolveDatabaseUrl } from "./env";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -8,12 +9,7 @@ declare global {
 }
 
 function createClient() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("Missing DATABASE_URL");
-  }
-
-  return postgres(url, {
+  return postgres(resolveDatabaseUrl(), {
     max: 10,
     prepare: false,
   });

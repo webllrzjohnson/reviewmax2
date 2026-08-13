@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { normalizeActionResult } from "../lib/action-result";
+import { resolveDatabaseUrl } from "../lib/db/env";
 import { parseJsonLoose } from "../lib/parse-json";
 import {
   buildPinterestPinPayload,
@@ -217,6 +218,26 @@ describe("normalizeActionResult", () => {
       ),
       { ok: true, message: "Post published. Pinterest pin created." },
     );
+  });
+});
+
+describe("resolveDatabaseUrl", () => {
+  it("uses the configured DATABASE_URL when present", () => {
+    assert.equal(
+      resolveDatabaseUrl({ DATABASE_URL: "postgresql://configured/db" }),
+      "postgresql://configured/db",
+    );
+  });
+
+  it("allows Next production builds to import DB modules without DATABASE_URL", () => {
+    assert.equal(
+      resolveDatabaseUrl({ NEXT_PHASE: "phase-production-build" }),
+      "postgresql://postgres:postgres@127.0.0.1:5432/postgres",
+    );
+  });
+
+  it("still fails loudly outside build when DATABASE_URL is missing", () => {
+    assert.throws(() => resolveDatabaseUrl({}), /Missing DATABASE_URL/);
   });
 });
 
