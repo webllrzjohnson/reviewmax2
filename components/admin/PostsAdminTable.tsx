@@ -29,6 +29,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { normalizeActionResult } from "@/lib/action-result";
 
 export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
   const router = useRouter();
@@ -305,14 +306,16 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                               post.id,
                               !post.is_published,
                             );
-                            if (!result.ok) {
-                              toast.error(
-                                result.message ?? "Could not update status.",
-                              );
+                            const safeResult = normalizeActionResult(
+                              result,
+                              "Could not update status.",
+                            );
+                            if (!safeResult.ok) {
+                              toast.error(safeResult.message);
                               return;
                             }
                             toast.success(
-                              result.message ??
+                              safeResult.message ??
                                 (post.is_published
                                   ? "Post unpublished."
                                   : "Post published."),

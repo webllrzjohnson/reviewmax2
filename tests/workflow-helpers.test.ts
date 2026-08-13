@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import { normalizeActionResult } from "../lib/action-result";
 import { parseJsonLoose } from "../lib/parse-json";
 import {
   formatPinterestPublishMessage,
@@ -99,6 +100,28 @@ describe("formatPostPublishMessage", () => {
         message: "PINTEREST_ACCESS_TOKEN unset",
       }),
       "Post published. Pinterest skipped: PINTEREST_ACCESS_TOKEN unset.",
+    );
+  });
+});
+
+describe("normalizeActionResult", () => {
+  it("turns an undefined server action response into a safe error", () => {
+    assert.deepEqual(
+      normalizeActionResult(undefined, "Could not update status."),
+      {
+        ok: false,
+        message: "Could not update status.",
+      },
+    );
+  });
+
+  it("preserves a successful server action message", () => {
+    assert.deepEqual(
+      normalizeActionResult(
+        { ok: true, message: "Post published. Pinterest pin created." },
+        "Could not update status.",
+      ),
+      { ok: true, message: "Post published. Pinterest pin created." },
     );
   });
 });
