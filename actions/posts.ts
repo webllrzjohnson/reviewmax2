@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { categories, pinterestPostLogs, posts } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
@@ -12,7 +12,9 @@ import {
 } from "@/lib/amazon-image";
 import { coerceProductImageUrl } from "@/lib/image-url";
 import {
+  formatPinterestPublishMessage,
   formatPostPublishMessage,
+  getPinterestThrottleUntil,
   maybePostReviewToPinterest,
   type PinterestResult,
 } from "@/lib/pinterest";
@@ -183,11 +185,37 @@ async function logPinterestPostResult(postId: string, result: PinterestResult) {
   }
 }
 
+async function getPinterestAutoThrottle() {
+  const [latestFailure] = await db
+    .select({
+      message: pinterestPostLogs.message,
+      createdAt: pinterestPostLogs.createdAt,
+    })
+    .from(pinterestPostLogs)
+    .where(eq(pinterestPostLogs.status, "failed"))
+    .orderBy(desc(pinterestPostLogs.createdAt))
+    .limit(1);
+
+  if (!latestFailure) return null;
+  return getPinterestThrottleUntil(latestFailure);
+}
+
 /** Best-effort Pinterest pin on first publish; never blocks the publish action. */
 async function maybePinOnFirstPublish(
   postId: string,
 ): Promise<PinterestResult | null> {
   try {
+    const throttleUntil = await getPinterestAutoThrottle();
+    if (throttleUntil) {
+      const result = {
+        ok: false,
+        skipped: true,
+        message: `Pinterest auto-posting paused until ${throttleUntil.toISOString()} after a spam/link trust block. Use the manual Pin button when ready to retry.`,
+      };
+      await logPinterestPostResult(postId, result);
+      return result;
+    }
+
     const [row] = await db
       .select({
         title: posts.title,
@@ -224,6 +252,57 @@ async function maybePinOnFirstPublish(
     };
     await logPinterestPostResult(postId, result);
     return result;
+  }
+}
+
+export async function submitPostToPinterest(
+  id: string,
+): Promise<PostActionState> {
+  try {
+    await requireAdmin();
+
+    const [row] = await db
+      .select({
+        title: posts.title,
+        excerpt: posts.excerpt,
+        slug: posts.slug,
+        rating: posts.rating,
+        imageUrl: posts.imageUrl,
+        isPublished: posts.isPublished,
+        categorySlug: categories.slug,
+      })
+      .from(posts)
+      .innerJoin(categories, eq(posts.categoryId, categories.id))
+      .where(eq(posts.id, id))
+      .limit(1);
+
+    if (!row) return { ok: false, message: "Post not found." };
+    if (!row.isPublished) {
+      return { ok: false, message: "Publish the post before pinning it." };
+    }
+
+    const result = await maybePostReviewToPinterest({
+      title: row.title,
+      excerpt: row.excerpt,
+      slug: row.slug,
+      categorySlug: row.categorySlug,
+      rating: Number(row.rating),
+      imageUrl: row.imageUrl,
+    });
+
+    await logPinterestPostResult(id, result);
+    revalidatePostPaths(row.slug);
+
+    return { ok: result.ok, message: formatPinterestPublishMessage(result) };
+  } catch (error) {
+    console.error("submitPostToPinterest: failed", error);
+    const result = {
+      ok: false,
+      skipped: false,
+      message: error instanceof Error ? error.message : "Pinterest post failed",
+    };
+    await logPinterestPostResult(id, result);
+    return { ok: false, message: formatPinterestPublishMessage(result) };
   }
 }
 

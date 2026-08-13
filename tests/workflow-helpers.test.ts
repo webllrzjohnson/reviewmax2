@@ -8,6 +8,8 @@ import {
   buildPinterestPinText,
   formatPinterestPublishMessage,
   formatPostPublishMessage,
+  getPinterestThrottleUntil,
+  isPinterestSpamBlockMessage,
   parsePinterestPinResponse,
   pickBoardId,
 } from "../lib/pinterest";
@@ -196,6 +198,48 @@ describe("parsePinterestPinResponse", () => {
       pinId: null,
       pinUrl: null,
     });
+  });
+});
+
+describe("Pinterest spam/link throttle helpers", () => {
+  it("detects Pinterest link spam blocks", () => {
+    assert.equal(
+      isPinterestSpamBlockMessage(
+        'Pinterest 429: {"code":9,"message":"Sorry! We blocked this link because it may lead to spam."}',
+      ),
+      true,
+    );
+    assert.equal(
+      isPinterestSpamBlockMessage("Pinterest 401: invalid token"),
+      false,
+    );
+  });
+
+  it("throttles auto-pinning for 24 hours after a spam block", () => {
+    const blockedAt = "2026-08-13T03:00:00.000Z";
+    const now = new Date("2026-08-13T04:00:00.000Z");
+
+    assert.equal(
+      getPinterestThrottleUntil({
+        message:
+          'Pinterest 429: {"message":"Sorry! We blocked this link because it may lead to spam."}',
+        createdAt: blockedAt,
+        now,
+      })?.toISOString(),
+      "2026-08-14T03:00:00.000Z",
+    );
+  });
+
+  it("does not throttle after the backoff window expires", () => {
+    assert.equal(
+      getPinterestThrottleUntil({
+        message:
+          'Pinterest 429: {"message":"Sorry! We blocked this link because it may lead to spam."}',
+        createdAt: "2026-08-13T03:00:00.000Z",
+        now: new Date("2026-08-14T04:00:00.000Z"),
+      }),
+      null,
+    );
   });
 });
 

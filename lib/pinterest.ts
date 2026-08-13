@@ -132,6 +132,34 @@ export type PinterestResult = {
   pinUrl?: string | null;
 };
 
+const PINTEREST_SPAM_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
+export function isPinterestSpamBlockMessage(
+  message: string | null | undefined,
+) {
+  const text = message?.toLowerCase() ?? "";
+  return (
+    text.includes("pinterest 429") &&
+    text.includes("blocked this link") &&
+    text.includes("spam")
+  );
+}
+
+export function getPinterestThrottleUntil(params: {
+  message: string | null | undefined;
+  createdAt: string;
+  now?: Date;
+}) {
+  if (!isPinterestSpamBlockMessage(params.message)) return null;
+
+  const blockedAt = new Date(params.createdAt);
+  if (Number.isNaN(blockedAt.getTime())) return null;
+
+  const until = new Date(blockedAt.getTime() + PINTEREST_SPAM_THROTTLE_MS);
+  if (until <= (params.now ?? new Date())) return null;
+  return until;
+}
+
 export function parsePinterestPinResponse(value: unknown): {
   pinId: string | null;
   pinUrl: string | null;

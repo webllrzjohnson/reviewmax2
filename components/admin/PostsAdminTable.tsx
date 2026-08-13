@@ -9,6 +9,7 @@ import {
   deletePost,
   retryPostImage,
   setPostPublished,
+  submitPostToPinterest,
   bulkSetPostsPublished,
   bulkDeletePosts,
   revalidatePostAction,
@@ -335,6 +336,39 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                       }
                     >
                       ↻
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={pending || !post.is_published}
+                      title={
+                        post.is_published
+                          ? "Submit this post to Pinterest manually"
+                          : "Publish before pinning"
+                      }
+                      onClick={() =>
+                        startTransition(async () => {
+                          toast.loading("Submitting to Pinterest…", {
+                            id: `pin-${post.id}`,
+                          });
+                          const result = await submitPostToPinterest(post.id);
+                          toast.dismiss(`pin-${post.id}`);
+
+                          if (result.ok) {
+                            toast.success(
+                              result.message ?? "Pinterest pin created.",
+                            );
+                          } else {
+                            toast.error(
+                              result.message ??
+                                "Could not submit to Pinterest.",
+                            );
+                          }
+                          refresh();
+                        })
+                      }
+                    >
+                      Pin
                     </Button>
                     <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                       <input
