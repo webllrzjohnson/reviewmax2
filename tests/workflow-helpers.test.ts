@@ -4,6 +4,7 @@ import { normalizeActionResult } from "../lib/action-result";
 import { parseJsonLoose } from "../lib/parse-json";
 import {
   buildPinterestPinPayload,
+  buildPinterestPinText,
   formatPinterestPublishMessage,
   formatPostPublishMessage,
   pickBoardId,
@@ -48,12 +49,53 @@ describe("pickBoardId", () => {
     assert.equal(pickBoardId("kitchen-gadgets"), "default-board");
   });
 
+  it("routes outdoor categories to outdoor board env vars", () => {
+    process.env.PINTEREST_BOARD_CAMPING = "camping-board";
+    process.env.PINTEREST_BOARD_HIKING = "hiking-board";
+    process.env.PINTEREST_BOARD_FISHING = "fishing-board";
+    process.env.PINTEREST_BOARD_CYCLING = "cycling-board";
+    process.env.PINTEREST_BOARD_WATER = "water-board";
+    process.env.PINTEREST_BOARD_OUTDOOR_APPAREL = "apparel-board";
+    process.env.PINTEREST_BOARD_HOME_TOOLS = "home-tools-board";
+
+    assert.equal(
+      pickBoardId("Camping Essentials & Must Haves"),
+      "camping-board",
+    );
+    assert.equal(pickBoardId("Backpacking & Ultralight Gear"), "hiking-board");
+    assert.equal(pickBoardId("Fishing & Angling"), "fishing-board");
+    assert.equal(pickBoardId("Cycling Apparel"), "cycling-board");
+    assert.equal(pickBoardId("Surfboards & Bodyboards"), "water-board");
+    assert.equal(pickBoardId("Outdoor Apparel"), "apparel-board");
+    assert.equal(pickBoardId("Tools & DIY"), "home-tools-board");
+  });
+
   it("returns null when no board env vars are set", () => {
     delete process.env.PINTEREST_BOARD_HAIR;
     delete process.env.PINTEREST_BOARD_BEAUTY;
     delete process.env.PINTEREST_BOARD_SKIN;
     delete process.env.PINTEREST_DEFAULT_BOARD_ID;
     assert.equal(pickBoardId("anything"), null);
+  });
+});
+
+describe("buildPinterestPinText", () => {
+  it("creates keyword-rich Pinterest text from review details", () => {
+    assert.deepEqual(
+      buildPinterestPinText({
+        title: "Kotap 10-ft x 10-ft General Purpose Blue Poly Tarp Review",
+        excerpt:
+          "The Kotap TRA-1010 is a budget-friendly 10x10 poly tarp for camping, yard work, and light-duty protection.",
+        categorySlug: "Tent Tarp",
+      }),
+      {
+        title: "Kotap 10-ft x 10-ft General Purpose Blue Poly Tarp Review",
+        description:
+          "Practical Tent Tarp review: The Kotap TRA-1010 is a budget-friendly 10x10 poly tarp for camping, yard work, and light-duty protection. Compare pros, cons, value, and best-use cases before you buy.",
+        altText:
+          "Verdict review pin for Kotap 10-ft x 10-ft General Purpose Blue Poly Tarp Review in Tent Tarp.",
+      },
+    );
   });
 });
 
@@ -114,6 +156,7 @@ describe("buildPinterestPinPayload", () => {
         description: "Practical buying advice.",
         link: "https://verdict.maplehub.cloud/blog/a-helpful-product-review",
         imageBase64: "abc123",
+        altText: "Verdict review pin for A helpful product review.",
       }),
       {
         board_id: "626211591877797535",
@@ -125,6 +168,7 @@ describe("buildPinterestPinPayload", () => {
           content_type: "image/png",
           data: "abc123",
         },
+        alt_text: "Verdict review pin for A helpful product review.",
       },
     );
   });

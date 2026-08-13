@@ -41,7 +41,7 @@ export async function GET() {
   <channel>
     <title>Verdict — Product Reviews</title>
     <link>${base}</link>
-    <description>Honest product reviews and buying guides for kitchen, tech, and fitness gear.</description>
+    <description>Practical product reviews and buying guides for outdoor gear, camping, hiking, fishing, tools, home essentials, and Amazon finds.</description>
     <language>en-us</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${base}/feed.xml" rel="self" type="application/rss+xml" />
