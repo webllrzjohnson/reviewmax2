@@ -187,6 +187,7 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
               <th className="px-4 py-3 font-medium">Rating</th>
               <th className="px-4 py-3 font-medium">Published</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium">Pinterest</th>
               <th className="px-4 py-3 font-medium">Image</th>
               <th className="px-4 py-3 font-medium text-right">Actions</th>
             </tr>
@@ -237,6 +238,47 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
                   >
                     {post.is_published ? "Published" : "Draft"}
                   </Badge>
+                </td>
+                <td className="px-4 py-3 align-top">
+                  {post.pinterest_post_log ? (
+                    <div className="space-y-1">
+                      <Badge
+                        variant={
+                          post.pinterest_post_log.status === "success"
+                            ? "default"
+                            : "secondary"
+                        }
+                        className={cn(
+                          post.pinterest_post_log.status === "failed" &&
+                            "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+                          post.pinterest_post_log.status === "skipped" &&
+                            "text-muted-foreground",
+                        )}
+                      >
+                        {post.pinterest_post_log.status === "success"
+                          ? "Pinned"
+                          : post.pinterest_post_log.status === "skipped"
+                            ? "Skipped"
+                            : "Failed"}
+                      </Badge>
+                      {post.pinterest_post_log.pin_url ? (
+                        <a
+                          href={post.pinterest_post_log.pin_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-xs text-primary hover:underline"
+                        >
+                          View pin
+                        </a>
+                      ) : post.pinterest_post_log.message ? (
+                        <p className="max-w-[180px] truncate text-xs text-muted-foreground">
+                          {post.pinterest_post_log.message}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 align-top">
                   {post.image_url && isDirectImageUrl(post.image_url) ? (

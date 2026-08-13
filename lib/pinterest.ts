@@ -100,9 +100,9 @@ async function postToPinterest(params: {
   link: string;
   imageBase64: string;
   altText?: string;
-}): Promise<void> {
+}): Promise<{ pinId: string | null; pinUrl: string | null }> {
   const token = process.env.PINTEREST_ACCESS_TOKEN;
-  if (!token) return;
+  if (!token) return { pinId: null, pinUrl: null };
 
   const base = process.env.PINTEREST_API_BASE || "https://api.pinterest.com";
 
@@ -119,13 +119,36 @@ async function postToPinterest(params: {
     const text = await response.text().catch(() => "");
     throw new Error(`Pinterest ${response.status}: ${text.slice(0, 200)}`);
   }
+
+  return parsePinterestPinResponse(await response.json().catch(() => null));
 }
 
 export type PinterestResult = {
   ok: boolean;
   skipped: boolean;
   message?: string;
+  boardId?: string | null;
+  pinId?: string | null;
+  pinUrl?: string | null;
 };
+
+export function parsePinterestPinResponse(value: unknown): {
+  pinId: string | null;
+  pinUrl: string | null;
+} {
+  const id =
+    value &&
+    typeof value === "object" &&
+    "id" in value &&
+    typeof value.id === "string"
+      ? value.id
+      : null;
+
+  return {
+    pinId: id,
+    pinUrl: id ? `https://www.pinterest.com/pin/${id}/` : null,
+  };
+}
 
 export function buildPinterestPinPayload(params: {
   boardId: string;
@@ -265,7 +288,7 @@ export async function maybePostReviewToPinterest(params: {
       categorySlug: params.categorySlug,
     });
 
-    await postToPinterest({
+    const postedPin = await postToPinterest({
       boardId,
       title: pinText.title,
       description: pinText.description,
@@ -274,7 +297,7 @@ export async function maybePostReviewToPinterest(params: {
       altText: pinText.altText,
     });
 
-    return { ok: true, skipped: false };
+    return { ok: true, skipped: false, boardId, ...postedPin };
   } catch (error) {
     console.error("maybePostReviewToPinterest: failed", error);
     return {

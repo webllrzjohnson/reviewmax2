@@ -21,11 +21,10 @@ export const automationRunStatusEnum = pgEnum("automation_run_status", [
 export const automationRunTypeEnum = pgEnum("automation_run_type", [
   "product_discovery",
 ]);
-export const automationRunItemStatusEnum = pgEnum("automation_run_item_status", [
-  "generated",
-  "skipped",
-  "failed",
-]);
+export const automationRunItemStatusEnum = pgEnum(
+  "automation_run_item_status",
+  ["generated", "skipped", "failed"],
+);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -58,8 +57,14 @@ export const posts = pgTable("posts", {
     .notNull()
     .references(() => categories.id, { onDelete: "restrict" }),
   rating: numeric("rating", { precision: 2, scale: 1 }),
-  pros: text("pros").array().notNull().default(sql`'{}'::text[]`),
-  cons: text("cons").array().notNull().default(sql`'{}'::text[]`),
+  pros: text("pros")
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
+  cons: text("cons")
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
   verdict: text("verdict").notNull(),
   amazonUrl: text("amazon_url").notNull(),
   imageUrl: text("image_url"),
@@ -68,15 +73,37 @@ export const posts = pgTable("posts", {
     .notNull()
     .default(sql`'{}'::text[]`),
   badge: text("badge"),
-  faqs: jsonb("faqs").notNull().default(sql`'[]'::jsonb`),
+  faqs: jsonb("faqs")
+    .notNull()
+    .default(sql`'[]'::jsonb`),
   priceAtReview: text("price_at_review"),
-  specs: jsonb("specs").notNull().default(sql`'{}'::jsonb`),
+  specs: jsonb("specs")
+    .notNull()
+    .default(sql`'{}'::jsonb`),
   isPublished: boolean("is_published").notNull().default(false),
-  publishedAt: timestamp("published_at", { withTimezone: true, mode: "string" }),
+  publishedAt: timestamp("published_at", {
+    withTimezone: true,
+    mode: "string",
+  }),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .notNull()
     .defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
+    .notNull()
+    .defaultNow(),
+});
+
+export const pinterestPostLogs = pgTable("pinterest_post_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  postId: uuid("post_id")
+    .notNull()
+    .references(() => posts.id, { onDelete: "cascade" }),
+  status: text("status").notNull(),
+  boardId: text("board_id"),
+  pinId: text("pin_id"),
+  pinUrl: text("pin_url"),
+  message: text("message"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" })
     .notNull()
     .defaultNow(),
 });
@@ -108,7 +135,10 @@ export const reviewRequests = pgTable("review_requests", {
   createdBy: uuid("created_by").references(() => users.id, {
     onDelete: "set null",
   }),
-  processedAt: timestamp("processed_at", { withTimezone: true, mode: "string" }),
+  processedAt: timestamp("processed_at", {
+    withTimezone: true,
+    mode: "string",
+  }),
   processedBy: uuid("processed_by").references(() => users.id, {
     onDelete: "set null",
   }),
@@ -127,7 +157,9 @@ export const automationRuns = pgTable("automation_runs", {
   maxItems: integer("max_items").notNull().default(3),
   summary: text("summary"),
   error: text("error"),
-  metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+  metadata: jsonb("metadata")
+    .notNull()
+    .default(sql`'{}'::jsonb`),
   startedBy: uuid("started_by").references(() => users.id, {
     onDelete: "set null",
   }),
@@ -155,11 +187,16 @@ export const automationRunItems = pgTable("automation_run_items", {
 export const automationSettings = pgTable("automation_settings", {
   id: text("id").primaryKey().default("default"),
   enabled: boolean("enabled").notNull().default(true),
-  categories: text("categories").array().notNull().default(sql`'{}'::text[]`),
+  categories: text("categories")
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
   country: text("country").notNull().default("United States"),
   notificationEmail: text("notification_email"),
   notifyOnRun: boolean("notify_on_run").notNull().default(false),
-  monthlySummaryEnabled: boolean("monthly_summary_enabled").notNull().default(false),
+  monthlySummaryEnabled: boolean("monthly_summary_enabled")
+    .notNull()
+    .default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" })
     .notNull()
     .defaultNow(),
@@ -179,12 +216,23 @@ export const categoriesRelations = relations(categories, ({ many }) => ({
   posts: many(posts),
 }));
 
-export const postsRelations = relations(posts, ({ one }) => ({
+export const postsRelations = relations(posts, ({ many, one }) => ({
   category: one(categories, {
     fields: [posts.categoryId],
     references: [categories.id],
   }),
+  pinterestPostLogs: many(pinterestPostLogs),
 }));
+
+export const pinterestPostLogsRelations = relations(
+  pinterestPostLogs,
+  ({ one }) => ({
+    post: one(posts, {
+      fields: [pinterestPostLogs.postId],
+      references: [posts.id],
+    }),
+  }),
+);
 
 export const usersRelations = relations(users, ({ many }) => ({
   reviewRequests: many(reviewRequests),
@@ -198,17 +246,23 @@ export const reviewRequestsRelations = relations(reviewRequests, ({ one }) => ({
   }),
 }));
 
-export const automationRunsRelations = relations(automationRuns, ({ many, one }) => ({
-  items: many(automationRunItems),
-  starter: one(users, {
-    fields: [automationRuns.startedBy],
-    references: [users.id],
+export const automationRunsRelations = relations(
+  automationRuns,
+  ({ many, one }) => ({
+    items: many(automationRunItems),
+    starter: one(users, {
+      fields: [automationRuns.startedBy],
+      references: [users.id],
+    }),
   }),
-}));
+);
 
-export const automationRunItemsRelations = relations(automationRunItems, ({ one }) => ({
-  run: one(automationRuns, {
-    fields: [automationRunItems.runId],
-    references: [automationRuns.id],
+export const automationRunItemsRelations = relations(
+  automationRunItems,
+  ({ one }) => ({
+    run: one(automationRuns, {
+      fields: [automationRunItems.runId],
+      references: [automationRuns.id],
+    }),
   }),
-}));
+);

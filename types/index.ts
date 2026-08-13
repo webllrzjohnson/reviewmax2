@@ -51,6 +51,18 @@ export interface Post {
 
 export interface PostWithCategory extends Post {
   category: Category | null;
+  pinterest_post_log?: PinterestPostLog | null;
+}
+
+export interface PinterestPostLog {
+  id: string;
+  post_id: string;
+  status: "success" | "skipped" | "failed" | string;
+  board_id: string | null;
+  pin_id: string | null;
+  pin_url: string | null;
+  message: string | null;
+  created_at: string;
 }
 
 export interface NewsletterSubscriber {

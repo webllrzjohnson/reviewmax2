@@ -7,6 +7,7 @@ import {
   buildPinterestPinText,
   formatPinterestPublishMessage,
   formatPostPublishMessage,
+  parsePinterestPinResponse,
   pickBoardId,
 } from "../lib/pinterest";
 import { dedupeSerpResultsByBrand } from "../lib/serp-products";
@@ -171,6 +172,29 @@ describe("buildPinterestPinPayload", () => {
         alt_text: "Verdict review pin for A helpful product review.",
       },
     );
+  });
+});
+
+describe("parsePinterestPinResponse", () => {
+  it("extracts the pin id and URL from Pinterest's create response", () => {
+    assert.deepEqual(
+      parsePinterestPinResponse({
+        id: "1234567890",
+        link: "https://verdict.maplehub.cloud/blog/example",
+        board_id: "626211591877797535",
+      }),
+      {
+        pinId: "1234567890",
+        pinUrl: "https://www.pinterest.com/pin/1234567890/",
+      },
+    );
+  });
+
+  it("keeps working if Pinterest does not return an id", () => {
+    assert.deepEqual(parsePinterestPinResponse({}), {
+      pinId: null,
+      pinUrl: null,
+    });
   });
 });
 

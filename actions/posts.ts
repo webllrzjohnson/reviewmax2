@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { categories, posts } from "@/lib/db/schema";
+import { categories, pinterestPostLogs, posts } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
 import { getDbErrorCode } from "@/lib/db-errors";
 import {
@@ -168,6 +168,21 @@ function revalidatePostPaths(slug?: string) {
   }
 }
 
+async function logPinterestPostResult(postId: string, result: PinterestResult) {
+  try {
+    await db.insert(pinterestPostLogs).values({
+      postId,
+      status: result.ok ? "success" : result.skipped ? "skipped" : "failed",
+      boardId: result.boardId ?? null,
+      pinId: result.pinId ?? null,
+      pinUrl: result.pinUrl ?? null,
+      message: result.message ?? null,
+    });
+  } catch (error) {
+    console.error("logPinterestPostResult: failed", error);
+  }
+}
+
 /** Best-effort Pinterest pin on first publish; never blocks the publish action. */
 async function maybePinOnFirstPublish(
   postId: string,
@@ -189,7 +204,7 @@ async function maybePinOnFirstPublish(
 
     if (!row) return null;
 
-    return await maybePostReviewToPinterest({
+    const result = await maybePostReviewToPinterest({
       title: row.title,
       excerpt: row.excerpt,
       slug: row.slug,
@@ -197,13 +212,18 @@ async function maybePinOnFirstPublish(
       rating: Number(row.rating),
       imageUrl: row.imageUrl,
     });
+
+    await logPinterestPostResult(postId, result);
+    return result;
   } catch (error) {
     console.error("maybePinOnFirstPublish: failed", error);
-    return {
+    const result = {
       ok: false,
       skipped: false,
       message: error instanceof Error ? error.message : "Pinterest post failed",
     };
+    await logPinterestPostResult(postId, result);
+    return result;
   }
 }
 

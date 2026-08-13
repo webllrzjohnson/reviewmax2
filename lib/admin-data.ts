@@ -1,14 +1,24 @@
-import { asc, count, desc, eq, isNull } from "drizzle-orm";
+import { asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { mapCategory, mapPostWithCategory, mapReviewRequest } from "@/lib/db/mappers";
+import {
+  mapCategory,
+  mapPostWithCategory,
+  mapReviewRequest,
+} from "@/lib/db/mappers";
 import {
   categories,
   newsletterSubscribers,
+  pinterestPostLogs,
   posts,
   reviewRequests,
 } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/session";
-import type { Category, NewsletterSubscriber, PostWithCategory, ReviewRequest } from "@/types";
+import type {
+  Category,
+  NewsletterSubscriber,
+  PostWithCategory,
+  ReviewRequest,
+} from "@/types";
 
 export type AdminDashboardData = {
   email: string;
@@ -156,8 +166,32 @@ export async function getAdminPosts(): Promise<PostWithCategory[]> {
       .leftJoin(categories, eq(posts.categoryId, categories.id))
       .orderBy(desc(posts.updatedAt));
 
+    const postIds = rows.map(({ post }) => post.id);
+    const latestPinterestLogByPost = new Map<
+      string,
+      typeof pinterestPostLogs.$inferSelect
+    >();
+
+    if (postIds.length) {
+      const logs = await db
+        .select()
+        .from(pinterestPostLogs)
+        .where(inArray(pinterestPostLogs.postId, postIds))
+        .orderBy(desc(pinterestPostLogs.createdAt));
+
+      for (const log of logs) {
+        if (!latestPinterestLogByPost.has(log.postId)) {
+          latestPinterestLogByPost.set(log.postId, log);
+        }
+      }
+    }
+
     return rows.map(({ post, category }) =>
-      mapPostWithCategory({ ...post, category }),
+      mapPostWithCategory({
+        ...post,
+        category,
+        pinterestPostLog: latestPinterestLogByPost.get(post.id) ?? null,
+      }),
     );
   } catch (error) {
     console.warn("getAdminPosts", error);
