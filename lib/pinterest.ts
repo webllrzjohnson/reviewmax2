@@ -33,7 +33,7 @@ async function postToPinterest(params: {
   title: string;
   description: string;
   link: string;
-  imageUrl: string;
+  imageBase64: string;
 }): Promise<void> {
   const token = process.env.PINTEREST_ACCESS_TOKEN;
   if (!token) return;
@@ -46,13 +46,7 @@ async function postToPinterest(params: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      board_id: params.boardId,
-      title: params.title.slice(0, 100),
-      description: params.description.slice(0, 500),
-      link: params.link,
-      media_source: { source_type: "image_url", url: params.imageUrl },
-    }),
+    body: JSON.stringify(buildPinterestPinPayload(params)),
   });
 
   if (!response.ok) {
@@ -66,6 +60,26 @@ export type PinterestResult = {
   skipped: boolean;
   message?: string;
 };
+
+export function buildPinterestPinPayload(params: {
+  boardId: string;
+  title: string;
+  description: string;
+  link: string;
+  imageBase64: string;
+}) {
+  return {
+    board_id: params.boardId,
+    title: params.title.slice(0, 100),
+    description: params.description.slice(0, 500),
+    link: params.link,
+    media_source: {
+      source_type: "image_base64",
+      content_type: "image/png",
+      data: params.imageBase64,
+    },
+  };
+}
 
 function normalizeMessage(message: string | undefined, fallback: string) {
   const text = message?.trim() || fallback;
@@ -153,7 +167,7 @@ export async function maybePostReviewToPinterest(params: {
       title: params.title,
       description: params.excerpt,
       link: `${baseUrl}/blog/${params.slug}`,
-      imageUrl: pin.pinImageUrl,
+      imageBase64: pin.imageBase64,
     });
 
     return { ok: true, skipped: false };

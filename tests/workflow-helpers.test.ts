@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test";
 import { normalizeActionResult } from "../lib/action-result";
 import { parseJsonLoose } from "../lib/parse-json";
 import {
+  buildPinterestPinPayload,
   formatPinterestPublishMessage,
   formatPostPublishMessage,
   pickBoardId,
@@ -100,6 +101,31 @@ describe("formatPostPublishMessage", () => {
         message: "PINTEREST_ACCESS_TOKEN unset",
       }),
       "Post published. Pinterest skipped: PINTEREST_ACCESS_TOKEN unset.",
+    );
+  });
+});
+
+describe("buildPinterestPinPayload", () => {
+  it("sends generated pin images as base64 so Pinterest does not fetch a temporary URL", () => {
+    assert.deepEqual(
+      buildPinterestPinPayload({
+        boardId: "626211591877797535",
+        title: "A helpful product review",
+        description: "Practical buying advice.",
+        link: "https://verdict.maplehub.cloud/blog/a-helpful-product-review",
+        imageBase64: "abc123",
+      }),
+      {
+        board_id: "626211591877797535",
+        title: "A helpful product review",
+        description: "Practical buying advice.",
+        link: "https://verdict.maplehub.cloud/blog/a-helpful-product-review",
+        media_source: {
+          source_type: "image_base64",
+          content_type: "image/png",
+          data: "abc123",
+        },
+      },
     );
   });
 });

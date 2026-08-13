@@ -29,7 +29,7 @@ export function getChromiumPath(): string | null {
 }
 
 export type PinImageResult =
-  | { ok: true; pinImageUrl: string; filename: string }
+  | { ok: true; pinImageUrl: string; imageBase64: string; filename: string }
   | { ok: false; error: string };
 
 /**
@@ -52,8 +52,7 @@ export async function generatePinImage(params: {
     };
   }
 
-  const baseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const templateUrl = `${baseUrl}/pin-template?title=${encodeURIComponent(
     params.title,
   )}&category=${encodeURIComponent(
@@ -89,6 +88,7 @@ export async function generatePinImage(params: {
       ok: true,
       filename,
       pinImageUrl: `${baseUrl}/api/pin-image/${filename}`,
+      imageBase64: Buffer.from(screenshotBuffer).toString("base64"),
     };
   } finally {
     await browser.close();
