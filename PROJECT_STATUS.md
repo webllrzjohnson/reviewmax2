@@ -93,13 +93,15 @@ A database migration was added for Pinterest logging:
 drizzle/0009_pinterest_post_logs.sql
 ```
 
-If it has not already been run in production, run this once after a successful Coolify deploy:
+Louie confirmed on 2026-08-14 that this production migration was run.
+
+No further action is needed for this migration unless a future SQL migration is added.
+
+Historical command that was required:
 
 ```bash
 npm run db:migrate
 ```
-
-Run it inside the app container so it uses Coolify's production `DATABASE_URL`.
 
 No additional migration is required for the admin pagination change.
 
@@ -173,11 +175,9 @@ Recommended order:
    - Check latest deployed commit in Coolify.
    - Confirm production health: <https://verdict.maplehub.cloud/api/health>
 
-2. **Run/confirm DB migration**
-   - If `0009_pinterest_post_logs.sql` has not been applied, run:
-     ```bash
-     npm run db:migrate
-     ```
+2. **DB migration status**
+   - `0009_pinterest_post_logs.sql` was confirmed applied in production on 2026-08-14.
+   - Do not re-run migration for this specific change unless production DB state is reset or a future migration is added.
 
 3. **Verify admin posts page**
    - Open `/dashboard/posts`.
