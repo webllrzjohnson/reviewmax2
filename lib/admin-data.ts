@@ -1,4 +1,5 @@
 import { asc, count, desc, eq, inArray, isNull } from "drizzle-orm";
+import { getAdminPostsPageCount } from "@/lib/admin-posts-pagination";
 import { db } from "@/lib/db";
 import {
   mapCategory,
@@ -153,10 +154,34 @@ export async function getAllReviewRequests(): Promise<ReviewRequest[]> {
   }
 }
 
-export async function getAdminPosts(): Promise<PostWithCategory[]> {
+export type AdminPostsPage = {
+  posts: PostWithCategory[];
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  total: number;
+};
+
+export async function getAdminPosts(params?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<PostWithCategory[]> {
+  const result = await getAdminPostsPage(params);
+  return result.posts;
+}
+
+export async function getAdminPostsPage(params?: {
+  page?: number;
+  pageSize?: number;
+}): Promise<AdminPostsPage> {
   await requireAdmin();
 
+  const page = Math.max(1, params?.page ?? 1);
+  const pageSize = Math.max(1, params?.pageSize ?? 20);
+  const offset = (page - 1) * pageSize;
+
   try {
+    const [{ total }] = await db.select({ total: count() }).from(posts);
     const rows = await db
       .select({
         post: posts,
@@ -164,7 +189,9 @@ export async function getAdminPosts(): Promise<PostWithCategory[]> {
       })
       .from(posts)
       .leftJoin(categories, eq(posts.categoryId, categories.id))
-      .orderBy(desc(posts.updatedAt));
+      .orderBy(desc(posts.updatedAt))
+      .limit(pageSize)
+      .offset(offset);
 
     const postIds = rows.map(({ post }) => post.id);
     const latestPinterestLogByPost = new Map<
@@ -186,15 +213,27 @@ export async function getAdminPosts(): Promise<PostWithCategory[]> {
       }
     }
 
-    return rows.map(({ post, category }) =>
-      mapPostWithCategory({
-        ...post,
-        category,
-        pinterestPostLog: latestPinterestLogByPost.get(post.id) ?? null,
-      }),
-    );
+    return {
+      posts: rows.map(({ post, category }) =>
+        mapPostWithCategory({
+          ...post,
+          category,
+          pinterestPostLog: latestPinterestLogByPost.get(post.id) ?? null,
+        }),
+      ),
+      page,
+      pageSize,
+      pageCount: getAdminPostsPageCount(Number(total ?? 0), pageSize),
+      total: Number(total ?? 0),
+    };
   } catch (error) {
-    console.warn("getAdminPosts", error);
-    return [];
+    console.warn("getAdminPostsPage", error);
+    return {
+      posts: [],
+      page,
+      pageSize,
+      pageCount: 1,
+      total: 0,
+    };
   }
 }

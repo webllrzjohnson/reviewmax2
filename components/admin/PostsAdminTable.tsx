@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -31,24 +31,53 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { normalizeActionResult } from "@/lib/action-result";
+import { ADMIN_POSTS_PAGE_SIZE_OPTIONS } from "@/lib/admin-posts-pagination";
 
-export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
+type PostsAdminPagination = {
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  total: number;
+};
+
+export function PostsAdminTable({
+  posts,
+  pagination,
+}: {
+  posts: PostWithCategory[];
+  pagination: PostsAdminPagination;
+}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  function pageHref(page: number, pageSize = pagination.pageSize) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("page", String(page));
+    params.set("perPage", String(pageSize));
+    return `/dashboard/posts?${params.toString()}`;
+  }
+
   if (posts.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed bg-muted/30 p-10 text-center text-sm text-muted-foreground">
-        No posts yet.{" "}
-        <Link href="/dashboard/posts/new" className="text-primary underline">
-          Create one manually
-        </Link>{" "}
-        or generate one from{" "}
-        <Link href="/dashboard/new-review" className="text-primary underline">
-          New review
-        </Link>
-        .
+      <div className="space-y-3">
+        <PostsPaginationControls
+          pagination={pagination}
+          pageHref={pageHref}
+          onPageSizeChange={(pageSize) => router.push(pageHref(1, pageSize))}
+        />
+        <div className="rounded-lg border border-dashed bg-muted/30 p-10 text-center text-sm text-muted-foreground">
+          No posts on this page.{" "}
+          <Link href="/dashboard/posts/new" className="text-primary underline">
+            Create one manually
+          </Link>{" "}
+          or generate one from{" "}
+          <Link href="/dashboard/new-review" className="text-primary underline">
+            New review
+          </Link>
+          .
+        </div>
       </div>
     );
   }
@@ -82,6 +111,11 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
 
   return (
     <div className="space-y-3">
+      <PostsPaginationControls
+        pagination={pagination}
+        pageHref={pageHref}
+        onPageSizeChange={(pageSize) => router.push(pageHref(1, pageSize))}
+      />
       {someSelected && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-4 py-3">
           <span className="text-sm font-medium">{selected.size} selected</span>
@@ -452,6 +486,78 @@ export function PostsAdminTable({ posts }: { posts: PostWithCategory[] }) {
             ))}
           </tbody>
         </table>
+      </div>
+      <PostsPaginationControls
+        pagination={pagination}
+        pageHref={pageHref}
+        onPageSizeChange={(pageSize) => router.push(pageHref(1, pageSize))}
+      />
+    </div>
+  );
+}
+
+function PostsPaginationControls({
+  pagination,
+  pageHref,
+  onPageSizeChange,
+}: {
+  pagination: PostsAdminPagination;
+  pageHref: (page: number, pageSize?: number) => string;
+  onPageSizeChange: (pageSize: number) => void;
+}) {
+  const start =
+    pagination.total === 0
+      ? 0
+      : (pagination.page - 1) * pagination.pageSize + 1;
+  const end = Math.min(pagination.total, pagination.page * pagination.pageSize);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        Showing {start}–{end} of {pagination.total} posts
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2">
+          <span>Rows</span>
+          <select
+            className="h-8 rounded-md border bg-background px-2 text-foreground"
+            value={pagination.pageSize}
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+          >
+            {ADMIN_POSTS_PAGE_SIZE_OPTIONS.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span>
+          Page {pagination.page} of {pagination.pageCount}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pagination.page <= 1}
+          asChild={pagination.page > 1}
+        >
+          {pagination.page > 1 ? (
+            <Link href={pageHref(pagination.page - 1)}>Previous</Link>
+          ) : (
+            <span>Previous</span>
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pagination.page >= pagination.pageCount}
+          asChild={pagination.page < pagination.pageCount}
+        >
+          {pagination.page < pagination.pageCount ? (
+            <Link href={pageHref(pagination.page + 1)}>Next</Link>
+          ) : (
+            <span>Next</span>
+          )}
+        </Button>
       </div>
     </div>
   );

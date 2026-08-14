@@ -1,13 +1,21 @@
 import Link from "next/link";
-import { getAdminPosts } from "@/lib/admin-data";
+import { getAdminPostsPage } from "@/lib/admin-data";
+import { parseAdminPostsPagination } from "@/lib/admin-posts-pagination";
 import { PostsAdminTable } from "@/components/admin/PostsAdminTable";
 import { RevalidateSiteButton } from "@/components/admin/RevalidateSiteButton";
 import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPostsPage() {
-  const posts = await getAdminPosts();
+type AdminPostsPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function AdminPostsPage({
+  searchParams,
+}: AdminPostsPageProps) {
+  const pagination = parseAdminPostsPagination(await searchParams);
+  const postsPage = await getAdminPostsPage(pagination);
 
   return (
     <div className="space-y-8">
@@ -31,7 +39,15 @@ export default async function AdminPostsPage() {
         </div>
       </div>
 
-      <PostsAdminTable posts={posts} />
+      <PostsAdminTable
+        posts={postsPage.posts}
+        pagination={{
+          page: postsPage.page,
+          pageSize: postsPage.pageSize,
+          pageCount: postsPage.pageCount,
+          total: postsPage.total,
+        }}
+      />
     </div>
   );
 }
